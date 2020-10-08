@@ -25,7 +25,8 @@ setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl")
 # noaa_dat <- StreamPULSE:::FindandCollect_airpres(lat, long,
 #                                                  startdate,
 #                                                  enddate)
-noaa_dat <- read_rds("data/noaa_air_temp.rds")
+# write_rds(noaa_dat, "data/noaa_air_temp_raw.rds")
+noaa_dat <- read_rds("data/noaa_air_temp_raw.rds")
 
 noaa_dat <- noaa_dat %>%
   mutate(datetime = with_tz(DateTime_UTC, tzone="EST")) %>% 
@@ -104,14 +105,22 @@ plot(detrended_dat$air_trend, detrended_dat$wat_trend)
 trendmod <- lm(detrended_dat$wat_trend ~ detrended_dat$air_trend)
 abline(a = trendmod$coefficients[1], b = trendmod$coefficients[2])
 
-plot(detrended_dat$date, detrended_dat$air_trend, 
-     type = "l", ylab = "temp C", xlab = "date")
-lines(detrended_dat$date, detrended_dat$wat_trend, col = "steelblue")
-lines(decomp_noaa$date, decomp_noaa$air_trend, lty = 2)
-legend("bottomright", 
-       c("50 year air trend", "4 year air trend", "4 year water trend"), 
-       lty = c(2, 1, 1), col = c("black","black","steelblue"), 
-       lwd = 1.2, bty = "n")
+png(width=7, height=6, units='in', type='cairo', res=300,
+    filename='figures/air_water_temp_trends.png')
+
+  plot(detrended_dat$date, detrended_dat$air_trend, 
+       type = "l", ylab = "temp C", xlab = "date")
+  lines(detrended_dat$date, detrended_dat$wat_trend, col = "steelblue")
+  lines(decomp_noaa$date, decomp_noaa$air_trend, lty = 2)
+  legend("bottomright", 
+         c("50 year air trend", "4 year air trend", "4 year water trend"), 
+         lty = c(2, 1, 1), col = c("black","black","steelblue"), 
+         lwd = 1.2, bty = "n")
+
+dev.off()
+
+air_temp <- left_join(daily, decomp_noaa)
+write_csv(air_temp, "data/noaa_air_temp.csv")
 
 decomp_noaa$wat_trend <- decomp_noaa$air_trend * trendmod$coefficients[2] + 
   trendmod$coefficients[1]

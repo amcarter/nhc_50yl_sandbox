@@ -64,7 +64,7 @@ nep_70 = gpp_70 - er_70
 #         nhc_18$model_results$fit$daily), date, K600_daily_mean)) %>%
 #     as.data.frame()
 
-nhc_new <- read_rds("data/NHC_metab_allsites.rds")
+nhc_new <- readRDS("data/NHC_metab_allsites.rds")
 
 # if(filter_high_Q){
 # 
@@ -116,8 +116,8 @@ qqnorm(gpp_new); abline(1, 1, col='red', lty=2)
 
 
 #dist plots ####
-png(width=9, height=6, units='in', type='cairo', res=300,
-    filename='~/Dropbox/streampulse/figs/NHC_comparison/metab_distributions.png')
+# png(width=9, height=6, units='in', type='cairo', res=300,
+#     filename='~/Dropbox/streampulse/figs/NHC_comparison/metab_distributions.png')
 
 defpar = par(mfrow=c(2,3))
 
@@ -495,13 +495,13 @@ dev.off()
 
 #bootstrap some confidence bounds (NEEDS TO BE WEIGHTED) ####
 nsamp = 20000
-mean_vect_er_68_70 = mean_vect_er_new = mean_vect_gpp_68_70 =
-    mean_vect_gpp_new = vector(length=nsamp)
+mean_vect_er_68_70 = mean_vect_er_17_18 = mean_vect_gpp_68_70 =
+    mean_vect_gpp_17_18 = vector(length=nsamp)
 for(i in 1:nsamp){
     samp_68_70_er = sample(er_68_70, size=79, replace=TRUE)
-    samp_new_er = sample(er_new, size=730, replace=TRUE)
+    samp_new_er = sample(er_new, size=length(er_new), replace=TRUE)
     samp_68_70_gpp = sample(gpp_68_70, size=79, replace=TRUE)
-    samp_new_gpp = sample(gpp_new, size=730, replace=TRUE)
+    samp_new_gpp = sample(gpp_new, size=length(gpp_new), replace=TRUE)
     mean_vect_er_68_70[i] = mean(samp_68_70_er, na.rm=TRUE)
     mean_vect_er_new[i] = mean(samp_new_er, na.rm=TRUE)
     mean_vect_gpp_68_70[i] = mean(samp_68_70_gpp, na.rm=TRUE)
@@ -510,13 +510,74 @@ for(i in 1:nsamp){
 
 # plot(density(mean_vect_er_68_70 * -1))
 CI = data.frame('CI95_lower'=numeric(4), 'median'=numeric(4),
+                'CI95_upper'=numeric(4),
+                row.names=c('GPP_then', 'GPP_now', 'ER_then', 'ER_now'))
+CI[1,] = quantile(sort(mean_vect_gpp_68_70), probs=c(0.025, 0.5, 0.975))
+CI[2,] = quantile(sort(mean_vect_gpp_new), probs=c(0.025, 0.5, 0.975))
+CI[3,] = -quantile(sort(mean_vect_er_68_70) * -1, probs=c(0.025, 0.5, 0.975))
+CI[4,] = -quantile(sort(mean_vect_er_new), probs=c(0.025, 0.5, 0.975))
+
+png(width=7, height=6, units='in', type='cairo', res=300,
+    filename='figures/bootstrapped_metabolism_CI_comparison.png')
+
+
+par(mfrow = c(1,2))
+boxplot(t(CI), col = c(alpha("darkred",.75),"grey35" ),
+        ylab = "g O2/m2/d",ylim = c(0,3.5))
+legend("topleft", bty = "n",
+       c("Hall data", "2019 data"),
+       fill = c(alpha("darkred",.75),"grey35" ))
+mtext("Unweighted confidence intervals")
+
+# weighted by month CI #this seems questionable, double check it
+fullnsamp = 20000
+mean_vect_er_68_70 = mean_vect_er_new = mean_vect_gpp_68_70 =
+    mean_vect_gpp_new = c()
+for(m in names(month_proportions)){
+    nsamp = ceiling(fullnsamp * month_proportions[names(month_proportions)==m])    
+    t_er_68_70 <- unlist(er_68_70_bymo[m])
+    t_gpp_68_70 <- unlist(gpp_68_70_bymo[m])
+    t_er_new <- unlist(er_new_bymo[m])
+    t_gpp_new <- unlist(gpp_new_bymo[m])
+    
+    t_mean_vect_er_68_70 = t_mean_vect_er_new = t_mean_vect_gpp_68_70 =
+        t_mean_vect_gpp_new = vector(length=nsamp)
+    
+    for(i in 1:nsamp){
+        samp_68_70_er = sample(t_er_68_70, size=length(t_er_68_70), replace=TRUE)
+        samp_new_er = sample(t_er_new, size=length(t_er_new), replace=TRUE)
+        samp_68_70_gpp = sample(t_gpp_68_70, size=length(t_gpp_68_70), replace=TRUE)
+        samp_new_gpp = sample(t_gpp_new, size=length(t_gpp_new), replace=TRUE)
+        t_mean_vect_er_68_70[i] = mean(samp_68_70_er, na.rm=TRUE)
+        t_mean_vect_er_new[i] = mean(samp_new_er, na.rm=TRUE)
+        t_mean_vect_gpp_68_70[i] = mean(samp_68_70_gpp, na.rm=TRUE)
+        t_mean_vect_gpp_new[i] = mean(samp_new_gpp, na.rm=TRUE)
+    }
+    
+    mean_vect_er_68_70 <- c(mean_vect_er_68_70, t_mean_vect_er_68_70)
+    mean_vect_er_new <- c(mean_vect_er_new, t_mean_vect_er_new)
+    mean_vect_gpp_68_70 <- c(mean_vect_gpp_68_70, t_mean_vect_gpp_68_70)
+    mean_vect_gpp_new <- c(mean_vect_gpp_new, t_mean_vect_gpp_new)
+}
+
+# plot(density(mean_vect_er_68_70 * -1))
+CI = data.frame('CI95_lower'=numeric(4), 'median'=numeric(4),
     'CI95_upper'=numeric(4),
     row.names=c('GPP_then', 'GPP_now', 'ER_then', 'ER_now'))
 CI[1,] = quantile(sort(mean_vect_gpp_68_70), probs=c(0.025, 0.5, 0.975))
 CI[2,] = quantile(sort(mean_vect_gpp_new), probs=c(0.025, 0.5, 0.975))
-CI[3,] = quantile(sort(mean_vect_er_68_70) * -1, probs=c(0.025, 0.5, 0.975))
-CI[4,] = quantile(sort(mean_vect_er_new), probs=c(0.025, 0.5, 0.975))
-write.csv(CI, '~/Dropbox/streampulse/figs/NHC_comparison/metab_CIs.csv')
+CI[3,] = -quantile(sort(mean_vect_er_68_70), probs=c(0.025, 0.5, 0.975))
+CI[4,] = -quantile(sort(mean_vect_er_new), probs=c(0.025, 0.5, 0.975))
+#write.csv(CI, '~/Dropbox/streampulse/figs/NHC_comparison/metab_CIs.csv')
+
+boxplot(t(CI), col = c(alpha("darkred",.75),"grey35" ), 
+        ylab = "g O2/m2/d", ylim = c(0,3.5))
+# legend("topleft",cex=1.4, bty = "n",
+#        c("Hall metabolism", "2019 metabolism"),
+#        fill = c(alpha("darkred",.75),"grey35" ))
+mtext("Confidence intervals weighted by month")
+ 
+dev.off()
 
 #evaluate k now vs. then ####
 

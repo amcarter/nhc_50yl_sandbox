@@ -1,0 +1,36 @@
+
+estimation of k
+
+3 methods tried:
+    diurnal curve
+        evening resp greater than morning resp, so this
+        method gave much higher results than others, thus not used 
+    stream morphology
+        this is the method actually used in the study
+        averages pool and riffle values of the diff constant
+            (k; g O2 m-3 hr-1)
+        varied between 0.25 and 0.6
+    dome
+        not used directly, but used to verify stream morphology method
+
+estimation of ER, GPP
+
+2 station analysis
+    attempted but mostly impractical ("because of necessity of sampling at 3 to 5 locations that were too far apart')
+    run once at concrete bridge and once at blackwood
+        conclusion: metabolism did not change much over 1hr flow distance at either site (measured for a day at upstream and downstream)
+
+1 station analysis
+    page 83
+    legal here because upstream and downstream curves are similar
+    procedure:
+        measure O2 conc and temp every 2-3 hr (winkler or galvanic)
+        plot O2 conc
+        calculate saturation deficit (S) and diffusion constant (K)
+            D = KS = zkS (p. 317)
+        calculate first derivative of O2 conc
+        plot rate of change
+        correct rate of change plot by adding D
+        estimation of ER and GPP (page 92 and fig 13 above)
+            ER = area between 0 rate of change line and diffusion corrected respiration curve
+            GPP = area between daytime respiration line (partly drawn in) and daytime rate of change curve

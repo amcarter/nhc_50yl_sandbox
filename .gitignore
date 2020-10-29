@@ -1,1 +1,2 @@
-data/
+data/*
+!data/hall_data

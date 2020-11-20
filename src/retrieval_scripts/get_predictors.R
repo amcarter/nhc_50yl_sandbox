@@ -535,7 +535,7 @@ wb = sf::st_read('data/watershed_boundary/NHC.shp')
 
 
 
-# 3. get PRISM annual precip data 1970-2013 for NHC watershed (via geoknife) ####
+# 3. [obsolete] get PRISM annual precip data 1970-2013 for NHC watershed (via geoknife) ####
 
 if(rebuild_all){
 
@@ -559,16 +559,110 @@ precip = read_csv('data/prism/prism_raw.csv') %>%
     summarize(precip_mm = sum(precip_mm, na.rm = TRUE)) %>%
     ungroup()
 
-# 4. get PRISM data and localize it to NHC watershed (old fashioned way) ####
-options(prism.path = paste0(getwd(), '/data/prism_raw'))
+# 4. [obsolete?] get PRISM data and localize it to NHC watershed (old fashioned way) ####
 
-get_prism_annual(type = 'ppt', year = 1970:2019, keepZip = FALSE)
+if(rebuild_all){
 
-# 5. get NLDAS data (LAI, ...) 1970-2019 for NHC watershed ####
+    dir.create(paste0(getwd(), '/data/prism_raw'),
+               showWarnings = FALSE)
+    options(prism.path = paste0(getwd(), '/data/prism_raw'))
 
-#NLDAS is broken??
+    get_prism_annual(type = 'ppt',
+                     year = 1968:2020,
+                     keepZip = FALSE)
 
-# 6. get 1970-2019 for NHC watershed ####
+
+    # stencil = simplegeom(as(wb, 'Spatial'))
+    # fabric = webdata(list(times = as.POSIXct(c('1968-01-01', '2020-03-31')),
+    #                       url = 'https://cida.usgs.gov/thredds/dodsC/prism',
+    #                       variables = 'ppt'))
+    #
+    # job = geoknife(stencil, fabric, wait = TRUE)
+    # # successful(job)
+    # # job = cancel(job)
+    #
+    # precip = result(job)
+    # write_csv(precip, 'data/prism/prism_raw.csv') #NOTE: this is monthly
+}
+
+precip = read_csv('data/prism/prism_raw.csv') %>%
+    as_tibble() %>%
+    dplyr::select(datetime = DateTime, precip_mm = '1') %>%
+    group_by(year = substr(datetime, 1, 4)) %>%
+    summarize(precip_mm = sum(precip_mm, na.rm = TRUE)) %>%
+    ungroup()
+
+# 5. get NLDAS data 1970-present for NHC watershed ####
+
+if(rebuild_all){
+
+    webdatasets = query('webdata')
+    set_ind = grep('nldas', abstract(webdatasets), ignore.case = TRUE)
+    endpoint = url(webdatasets[set_ind])
+    wbd = webdata(webdatasets[set_ind])
+
+    stencil = simplegeom(as(wb, 'Spatial'))
+    fabric = webdata(list(times = as.POSIXct(c('1968-01-01', '2020-12-31')),
+                          url = endpoint,
+                          variables = query(wbd, 'variables')))
+
+    job = geoknife(stencil, fabric, wait = TRUE)
+    # successful(job)
+    # job = cancel(job)
+
+    nldas = result(job)
+
+    nldas = nldas %>%
+        as_tibble() %>%
+        pivot_wider(names_from = 'variable',
+                    values_from = '1') %>%
+        dplyr::select(datetime = DateTime, -statistic)
+        # group_by(year = substr(datetime, 1, 4)) %>%
+        # summarize(precip_mm = sum(precip_mm, na.rm = TRUE)) %>%
+        # ungroup()
+    write_csv(nldas, 'data/nldas.csv')
+}
+
+
+# 6. [pending] get NWALT land cover 1974-2012 (from Arc layers) ####
+
+library(rgdal)
+
+nwalt_paths = c('https://water.usgs.gov/GIS/dsdl/ds948_landuse1974.zip')
+
+dest = 'data/nwalt/raw'
+dir.create(dest,
+           showWarnings = FALSE,
+           recursive = TRUE)
+
+for(p in nwalt_paths){
+    path_components = strsplit(p, '/')[[1]]
+    fn = path_components[length(path_components)]
+    zipf = paste(dest, fn, sep = '/')
+    download.file(url = p,
+                  destfile = zipf,
+                  cacheOK = FALSE,
+                  method = 'curl')
+    unzip(zipf, exdir = dest)
+    unlink(zipf)
+
+    #temporary dead end here. layer requires 16GB memory.
+    #if picking up here, first must modify the below chunk to locate path to
+    #layer programmatically. then must figure out how to subset various land
+    #cover types from the layer programmatically
+    x = new("GDALReadOnlyDataset", 'data/nwalt/raw/nwalt_landuse_1974/lu1974_050815/')
+    getDriver(x)
+    getDriverLongName(getDriver(x))
+    xx = asSGDF_GROD(x) #boinks here
+    r = raster::raster(xx)
+    plot(r)
+}
+
+# 7. [pending] evapotranspiration from geoknife ####
+
+#adapt section 5 code
+
+# x. geoknife experimentation (looking for other datasets) ####
 
 if(rebuild_all){
 
@@ -605,4 +699,5 @@ if(rebuild_all){
 #     group_by(month = substr(datetime, 1, 7)) %>%
 #     summarize(precip_mm = sum(precip_mm, na.rm = TRUE)) %>%
 #     ungroup()
+
 

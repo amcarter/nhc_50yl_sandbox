@@ -187,27 +187,66 @@ med_bf <- nhc_q %>%
 # Multipanel graph ####
 library(ggpubr)
 
-precip = read_csv('data/prism/prism_raw.csv') %>%
-  as_tibble() %>%
-  dplyr::select(datetime = DateTime, precip_mm = '1') %>%
-  group_by(year = as.numeric(substr(datetime, 1, 4))) %>%
-  filter(year < 2013) %>%
-  summarize(precip_mm = sum(precip_mm, na.rm = TRUE)) %>%
-  ungroup()
+precip <- read_csv("data/nldas.csv") %>%
+  dplyr::select(datetime = DateTime, value = '1', variable) %>% 
+  filter(variable == "precipitation_amount") %>%
+  mutate(Date = as.Date(datetime)) %>%
+  select(Date, precip = value)
 
-pp <- ggplot(precip, aes(year, precip_mm)) +
+cum_dat <- precip %>%
+  full_join(nhc_q, by = "Date") %>%
+  mutate(year = year(Date),
+         month = month(Date)) %>%
+  group_by(year, month) %>%
+  summarize(precip_mean = mean(precip, na.rm = T),
+            precip_cum = sum(precip),
+            q_median = median(q_nhc_blands, na.rm = T),
+            q_05 = quantile(q_nhc_blands, .05, na.rm = T),
+            bf_mean = mean(baseflow, na.rm = T), 
+            bf_cum = sum(baseflow),
+            sf_mean = mean(stormflow, na.rm = T), 
+            sf_cum = sum(stormflow)) %>%
+  ungroup() %>%
+  mutate(date = as.Date(paste0(year, "-", month, "-01"), 
+                        format = "%Y-%m-%d")) %>%
+  arrange(date)
+
+# precip <- read_csv('data/prism/prism_raw.csv') %>%
+#   as_tibble() %>%
+#   dplyr::select(datetime = DateTime, precip_mm = '1') %>%
+#   group_by(year = as.numeric(substr(datetime, 1, 4))) %>%
+#   filter(year < 2013) %>%
+#   summarize(precip_mm = sum(precip_mm, na.rm = TRUE)) %>%
+#   ungroup()
+
+
+
+pp <- ggplot(cum_dat, aes(date, precip_mean)) +
         geom_point() +
-        geom_smooth(method = lm, lwd = 1.5, col = "black") +
+        geom_smooth(method = lm, lwd = 1, col = "black") +
         theme_minimal() +
         xlab("") +
-        xlim(1983, 2020)
+        xlim(as.Date("1970-01-01"), as.Date("2020-01-01"))
 
-bf <- ggplot(nhc_q, aes(Date, baseflow))+
-        geom_point(col = "grey60") +
-        ylim(0,10) +
-        ylab("baseflow  (m3s)")+
-        geom_smooth(col = "steelblue", lwd = 1.5) +
-        theme_minimal() 
+bf <- ggplot(cum_dat, aes(date, bf_mean)) +
+        geom_point() +
+        ylim(0, 10) + 
+        ylab("baseflow (m3s)") +
+        xlab("") +
+        geom_smooth(method = lm, lwd = 1, col = "black") +
+        theme_minimal() +
+        xlim(as.Date("1970-01-01"), as.Date("2020-01-01")) 
+
+qq <- ggplot(cum_dat, aes(date, q_median)) +
+        geom_point() +
+        geom_smooth(method = lm, lwd = 1, col = "black") +
+        geom_point(aes(y = q_05), col = "steelblue") +
+        geom_smooth(aes(y = q_05), method = lm, lwd = 1, col = "steelblue") +
+        theme_minimal() +
+        ylim(0,6) +
+        ylab("q median and 5% quantile (m3s)") +
+        xlim(as.Date("1970-01-01"), as.Date("2020-01-01")) 
+        
 jj <- monthly_q %>%
   filter(month == 7)
 jul_bf <- ggplot(jj, aes(waterYear, bf_frac)) +
@@ -230,11 +269,12 @@ art <- ggplot(air_t, aes(Date, air_trend))+
         theme_minimal() +
         ylab("air temperature trend C")+
         xlab("")+
+        xlim(as.Date("1970-01-01"), as.Date("2020-01-01"))  +
         ggtitle("Trends for NHC at Blands")
 png(width=7, height=6, units='in', type='cairo', res=300,
-    filename='../figures/nhc_blands_trends_2.png')
+    filename='../figures/nhc_blands_trends_3.png')
 
-  ggarrange(art, pp, jul_bf, ncol = 1, nrow = 3)
+  ggarrange(art, pp, qq, ncol = 1, nrow = 3)
 
 dev.off()
 

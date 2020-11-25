@@ -6,8 +6,11 @@ library(tidyverse)
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/code/")
 
 nldas <- read_csv("data/nldas.csv") %>%
-  dplyr::select(datetime = DateTime, value = '1', variable) #%>% 
-  filter(!variable %in% c("wind_speed", "surface_downwelling_shortwave_flux_in_air"))
+  dplyr::select(datetime = DateTime, value = '1', variable) %>% 
+  filter(!variable %in% c("wind_speed",
+                          "max_relative_humidity",
+                          "min_relative_humidity",
+                          "surface_downwelling_shortwave_flux_in_air"))
 
 ggplot(nldas, aes(x=datetime, y = value)) +
   geom_line() +

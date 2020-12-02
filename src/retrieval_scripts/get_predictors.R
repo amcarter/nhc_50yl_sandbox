@@ -521,6 +521,33 @@ delineate_watershed_from_point <- function(lat,
     return(deets)
 }
 
+get_gee_imgcol = function(gee_id, band, start, end, subset){
+
+    if(! missing(subset)){
+
+        gee_imgcol = ee$ImageCollection(gee_id)$
+            filterDate(start, end)$
+            select(band)$
+            # select(subset)$
+            map(function(x){
+                date <- ee$Date(x$get("system:time_start"))$format('YYYY_MM_dd')
+                x$set("RGEE_NAME", date)
+            })
+
+    } else {
+
+        gee_imgcol = ee$ImageCollection(gee_id)$
+            filterDate(start, end)$
+            select(band)$
+            map(function(x){
+                date <- ee$Date(x$get("system:time_start"))$format('YYYY_MM_dd')
+                x$set("RGEE_NAME", date)
+            })
+    }
+
+    return(gee_imgcol)
+}
+
 # 2. delineate the NHC watershed; load as shapefile ####
 
 if(rebuild_all){
@@ -532,8 +559,6 @@ if(rebuild_all){
 }
 
 wb = sf::st_read('data/watershed_boundary/NHC.shp')
-
-
 
 # 3. [obsolete] get PRISM annual precip data 1970-2013 for NHC watershed (via geoknife) ####
 
@@ -662,6 +687,163 @@ for(p in nwalt_paths){
 
 #adapt section 5 code
 
+# 8. get GEE layers (rgee setup is a beast) ####
+
+get_gee = function(gee_id,
+                   band,
+                   start,
+                   end,
+                   res){
+
+    imgcol = get_gee_imgcol(gee_id = gee_id,
+                            band = band,
+                            start = start,
+                            end = end)
+
+    Gout = list()
+
+    Gout$Gmed = ee_extract(x = imgcol,
+                           y = wb,
+                           scale = res,
+                           fun = ee$Reducer$median(),
+                           sf = FALSE)
+
+    Gout$Gmean = ee_extract(x = imgcol,
+                            y = wb,
+                            scale = res,
+                            fun = ee$Reducer$mean(),
+                            sf = FALSE)
+
+    Gout$Gstd = ee_extract(x = imgcol,
+                           y = wb,
+                           scale = res,
+                           fun = ee$Reducer$stdDev(),
+                           sf = FALSE)
+
+    Gout$Gcnt = ee_extract(x = imgcol,
+                           y = wb,
+                           scale = res,
+                           fun = ee$Reducer$count(),
+                           sf = FALSE)
+
+    Gout$Gmax = ee_extract(x = imgcol,
+                           y = wb,
+                           scale = res,
+                           fun = ee$Reducer$max(),
+                           sf = FALSE)
+
+    Gout$Gmin = ee_extract(x = imgcol,
+                           y = wb,
+                           scale = res,
+                           fun = ee$Reducer$min(),
+                           sf = FALSE)
+
+    Gnames = names(Gout)
+
+    for(gn in Gnames){
+
+        if(band %in% c('Lai_500m', 'Fpar_500m', 'Percent_Tree_Cover',
+                       'Percent_NonTree_Vegetation',
+                       'Percent_NonVegetated')){
+            rgx = 'X([0-9]{4}_[0-9]{2}_[0-9]{2})_(.+)'
+        # } else if(band %in% c('Lai_500m', 'Fpar_500m')){
+        #     rgx = 'X([0-9]{4}_[0-9]{2}_[0-9]{2})_(.+)'
+        } else {
+            rgx = 'X([0-9]+)_(.+)'
+        }
+
+        z = pivot_longer(Gout[[gn]],
+                         cols = everything(),
+                         names_pattern = rgx,
+                         names_to = c('date', '.value'))
+
+        colnames(z)[2] = paste(colnames(z)[2],
+                               substr(gn, 2, nchar(gn)),
+                               sep = '_')
+
+        Gout[[gn]] = z
+    }
+
+    Gout = purrr::reduce(Gout,
+                         full_join,
+                         by = 'date')
+
+    return(Gout)
+}
+
+#annual NPP
+Gnpp = get_gee(gee_id = 'UMT/NTSG/v2/LANDSAT/NPP',
+               band = 'annualNPP',
+               start = '1968-01-01',
+               end = '2020-12-31',
+               res = 30)
+
+#GPP
+Ggpp = get_gee(gee_id = 'UMT/NTSG/v2/LANDSAT/GPP',
+               band = 'GPP',
+               start = '1968-01-01',
+               end = '2020-12-31',
+               res = 30)
+
+#LAI
+Glai = get_gee(gee_id = 'MODIS/006/MOD15A2H',
+               band = 'Lai_500m',
+               start = '1968-01-01',
+               end = '2020-12-31',
+               res = 500)
+
+#FPAR
+Gfpar = get_gee(gee_id = 'MODIS/006/MOD15A2H',
+                band = 'Fpar_500m',
+                start = '1968-01-01',
+                end = '2020-12-31',
+                res = 500)
+
+#tree cover (MODIS)
+Gtree = get_gee(gee_id = 'MODIS/006/MOD44B',
+                band = 'Percent_Tree_Cover',
+                start = '1968-01-01',
+                end = '2020-12-31',
+                res = 250)
+
+#non-tree veg cover (MODIS)
+Gveg = get_gee(gee_id = 'MODIS/006/MOD44B',
+               band = 'Percent_NonTree_Vegetation',
+               start = '1968-01-01',
+               end = '2020-12-31',
+               res = 250)
+
+#vegless cover (MODIS)
+Gbare = get_gee(gee_id = 'MODIS/006/MOD44B',
+                band = 'Percent_NonVegetated',
+                start = '1968-01-01',
+                end = '2020-12-31',
+                res = 250)
+
+#impervious surface (NLCD)
+Gimperv = get_gee(gee_id = 'USGS/NLCD',
+                  band = 'impervious',
+                  start = '1968-01-01',
+                  end = '2020-12-31',
+                  res = 30)
+
+#tree cover (NLCD)
+Gtree2 = get_gee(gee_id = 'USGS/NLCD',
+                 band = '24',
+                 # band = 'landcover',
+                 # band = 'percent_tree_cover',
+                 start = '1968-01-01',
+                 end = '2020-12-31',
+                 res = 30)
+
+write_csv(Gbare, '~/git/papers/alice_nhc/data/gee/vegless.csv')
+write_csv(Gveg, '~/git/papers/alice_nhc/data/gee/nontree_veg.csv')
+write_csv(Gtree, '~/git/papers/alice_nhc/data/gee/treed.csv')
+write_csv(Gfpar, '~/git/papers/alice_nhc/data/gee/fpar.csv')
+write_csv(Glai, '~/git/papers/alice_nhc/data/gee/lai.csv')
+write_csv(Ggpp, '~/git/papers/alice_nhc/data/gee/gpp.csv')
+write_csv(Gnpp, '~/git/papers/alice_nhc/data/gee/npp.csv')
+
 # x. geoknife experimentation (looking for other datasets) ####
 
 if(rebuild_all){
@@ -699,5 +881,3 @@ if(rebuild_all){
 #     group_by(month = substr(datetime, 1, 7)) %>%
 #     summarize(precip_mm = sum(precip_mm, na.rm = TRUE)) %>%
 #     ungroup()
-
-

@@ -114,11 +114,11 @@ hall_Q <- hall_Q %>%
   ungroup()
 
 new_Q <- read_csv("../NHC_2019_metabolism/data/metabolism/processed/NHC.csv") %>%
-  mutate(datetime = with_tz(DateTime_UTC, tzone = "EST"),
+  mutate(datetime = force_tz(DateTime_EST, tzone = "EST"),
          date = as.Date(datetime)) %>%
-  select(datetime, date, level_m, Discharge_m3s) %>%
+  select(datetime, date, level_m, discharge) %>%
   group_by(date) %>% 
-  summarize(discharge_m3s = mean(Discharge_m3s, na.rm=T)) %>%
+  summarize(discharge_m3s = mean(discharge, na.rm=T)) %>%
   ungroup() %>%
   mutate(doy = format(date, "%j")) %>%
   group_by(doy) %>%

@@ -601,23 +601,26 @@ CI_prop[3,] = -quantile(sort(mean_vect_er_68_70), probs=c(0.025, 0.5, 0.975))
 CI_prop[4,] = -quantile(sort(mean_vect_er_new), probs=c(0.025, 0.5, 0.975))
 #write.csv(CI, '~/Dropbox/streampulse/figs/NHC_comparison/metab_CIs.csv')
 
-png(width=7, height=6, units='in', type='cairo', res=300,
-    filename='figures/bootstrapped_metabolism_CI_comparison.png')
+png(width=6, height=4, units='in', type='cairo', res=300,
+    filename='../figures/bootstrapped_metabolism_CI_comparison.png')
 
 
 par(mfrow = c(1,2))
 boxplot(t(CI), col = c(alpha("darkred",.75),"grey35" ),
-        ylab = "CI around mean (g O2/m2/d)",ylim = c(0,3.5))
-axis(1, at=1:2, labels=c(GPP, ER), line=1.5)
+        ylab = "CI around mean (g O2/m2/d)",ylim = c(0,3.5), 
+        xaxt = "n", xlab = "")
+axis(1, at=c(1.5, 3.5), labels=c("GPP", "ER"), line=0)
     #, col='transparent', tcl=0, font=2)
 legend("topleft", bty = "n",
-       c("Hall data", "2019 data"),
+       c("1968-70 data", "2017-19 data"),
        fill = c(alpha("darkred",.75),"grey35" ))
 
 mtext("Unweighted")
 
 boxplot(t(CI_prop), col = c(alpha("darkred",.75),"grey35" ), 
-        ylab = "CI around mean (g O2/m2/d)", ylim = c(0,3.5))
+        ylab = "CI around mean (g O2/m2/d)", ylim = c(0,3.5),
+        xaxt = "n", xlab = "")
+axis(1, at=c(1.5, 3.5), labels=c("GPP", "ER"), line=0)
 # legend("topleft",cex=1.4, bty = "n",
 #        c("Hall metabolism", "2019 metabolism"),
 #        fill = c(alpha("darkred",.75),"grey35" ))

@@ -555,7 +555,7 @@ get_gee = function(gee_id,
                    res){
 
     imgcol = get_gee_imgcol(gee_id = gee_id,
-                            band = band,
+                            # band = band,
                             start = start,
                             end = end)
 
@@ -565,7 +565,8 @@ get_gee = function(gee_id,
                            y = wb,
                            scale = res,
                            fun = ee$Reducer$median(),
-                           sf = FALSE)
+                           # sf = FALSE)
+                           sf = T)
 
     Gout$Gmean = ee_extract(x = imgcol,
                             y = wb,
@@ -674,7 +675,7 @@ get_gee_chunk = function(gee_id,
         }, error = function(e){
             try_err <<- TRUE
             print(paste(starti, 'to', endi, 'failed'))
-        }
+        })
         if(try_err) next
 
         geeout = bind_rows(geeout, geechunk)
@@ -916,12 +917,42 @@ Gtmin = get_gee_chunk(gee_id = 'OREGONSTATE/PRISM/AN81d',
                      chunk_size_yr = 2)
 write_csv(Gtmin, '~/git/papers/alice_nhc/data/gee/tmin.csv')
 
+
+zz = ee$FeatureCollection('USGS/NLCD')
+subset = zz$filterBounds(wb)
+rgee$
+ee_as_sf(
+    # filterDate(start, end)$
+
+gee_imgcol = ee$ImageCollection(gee_id)$
+    filterDate(start, end)$
+    select(band)$
+    map(function(x){
+        date <- ee$Date(x$get("system:time_start"))$format('YYYY_MM_dd')
+        x$set("RGEE_NAME", date)
+    })
+
+wb_ee = sf_as_ee(wb)
+# wb_ee$geometry()
+
+lcv <- ee$FeatureCollection('USGS/NLCD')$select('landcover')$
+    filterBounds(wb_ee) %>%
+    ee_as_sf()
+
+lcv <- ee$ImageCollection('USGS/NLCD')$select('landcover')$
+    filter(ee$Filter$eq('system:index', 'NLCD2011'))$first() %>%
+    ee$Image$clip(wb_ee) %>%
+# imp <- ee$ImageCollection('USGS/NLCD')$select('impervious') %>%
+    ee_as_stars(maxPixels = 20000000000)
+lcv = lcv %>%
+    sf::st_as_sf()
+mapview::mapview(lcv)
 # #impervious surface (NLCD)
 # Gimperv = get_gee(gee_id = 'USGS/NLCD',
-#                   band = 'impervious',
-#                   start = '1968-01-01',
-#                   end = '2020-12-31',
-#                   res = 30)
+                  # band = 'impervious',
+                  # start = '1968-01-01',
+                  # end = '2020-12-31',
+                  # res = 30)
 #
 # #tree cover (NLCD)
 # Gtree2 = get_gee(gee_id = 'USGS/NLCD',

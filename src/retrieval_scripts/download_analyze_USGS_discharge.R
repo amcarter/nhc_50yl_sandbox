@@ -58,7 +58,7 @@ site_dat <- read_csv("../data/USGS_gage_details.csv")
 #   I'll have to get the rest of the data.
 
 # drop cole mill and sandy_mlk for now, they doesn't have daily discharge
-site_dat <- site_dat[c(-2,-5),]
+site_dat <- site_dat[c(1,3,7),]
 # nwis_dat <- readNWISdv(siteNumbers = site_dat$site_no,
 #                       parameterCd = c("00060", "00065"))
 # nwis_dat <- dataRetrieval::addWaterYear(nwis_dat)
@@ -73,11 +73,12 @@ nwis <- nwis_dat %>%
         discharge_m3s, gage_height_m) %>%
   as_tibble()
 
-nwis <- left_join(nwis, site_dat[,c(2,6)])
+nwis <- left_join(nwis, site_dat[,c(2,6)]) %>%
+  filter(!is.na(site_id))
 
 ggplot(nwis, aes(Date, log(discharge_m3s))) +
   geom_line() +
-  facet_wrap(~site_id)
+  facet_wrap(~site_id, dir = 'v')
   
 
 
@@ -92,16 +93,17 @@ Q_stats <- nwis %>%
   summarize(n = length(discharge_m3s), 
             RBI = RBIcalc(discharge_m3s),
             peak_Q = max(discharge_m3s, na.rm = T),
-            ar_1 = arima(discharge_m3s, order = c(1,0,0))$coef[1]) %>%
+            ar_1 = arima(discharge_m3s, order = c(1,0,0))$coef[1],
+            q05 = quantile(discharge_m3s, .05, na.rm = T)) %>%
   ungroup() %>%
   filter(n >= 365) # Don't keep incomplete years
 png(width=7, height=6, units='in', type='cairo', res=300,
     filename='../figures/USGS_rbi_trends.png')
   
-  ggplot(Q_stats, aes(waterYear, RBI)) +
+  ggplot(Q_stats, aes(waterYear, q05)) +
     geom_smooth() +
     geom_point() +
-    facet_wrap(~site_id)
+    facet_wrap(~site_id, dir = 'v')
 dev.off()
 
 # Baseflow separation ####
@@ -109,8 +111,9 @@ library(RHydro)
 baseflow <- nwis %>% 
   dplyr::select(-site_no, -gage_height_m) %>%
   pivot_wider(names_from = site_id, 
-              values_from = discharge_m3s, names_prefix = "q_")
-baseflow <- baseflow[order(baseflow$Date),]
+              values_from = discharge_m3s, names_prefix = "q_") %>%
+  arrange(Date)
+
 eno_q <- baseflow %>%
   filter(!is.na(q_eno_hillsborough)) %>%
   dplyr::select(Date, waterYear, q_eno_hillsborough) %>%
@@ -119,7 +122,8 @@ eno_q <- baseflow %>%
          bf_frac = baseflow/q_eno_hillsborough)
 
 monthly_q <- eno_q %>%
-  mutate(month = format(Date, "%b")) %>%
+  mutate(month = factor(format(Date, "%b"),
+                        levels = month.abb)) %>%
   filter(waterYear > 1960, waterYear < 2020) %>%
   group_by(waterYear, month) %>%
   summarize(mean_bf = mean(baseflow, na.rm = T),
@@ -193,23 +197,36 @@ precip <- read_csv("data/nldas.csv") %>%
   mutate(Date = as.Date(datetime)) %>%
   select(Date, precip = value)
 
+preq <- precip %>%
+  full_join(nhc_q, by = "Date") %>%
+  select(-Date, - bf_frac) %>%
+  mutate(p_q = precip/q_nhc_blands) %>%
+  group_by(waterYear) %>%
+  summarize_all(median, na.rm = T)
+cor(preq, use = "na.or.complete")
+
+
 cum_dat <- precip %>%
   full_join(nhc_q, by = "Date") %>%
   mutate(year = year(Date),
          month = month(Date)) %>%
-  group_by(year, month) %>%
-  summarize(precip_mean = mean(precip, na.rm = T),
-            precip_cum = sum(precip),
+  group_by(waterYear) %>% #, month) %>%
+  summarize(precip_0 = length(which(precip <= 0)),
+            precip_mean = mean(precip, na.rm = T),
+            precip_max = max(precip, na.rm = T),
             q_median = median(q_nhc_blands, na.rm = T),
             q_05 = quantile(q_nhc_blands, .05, na.rm = T),
-            bf_mean = mean(baseflow, na.rm = T), 
+            bf_median = median(baseflow, na.rm = T), 
             bf_cum = sum(baseflow),
             sf_mean = mean(stormflow, na.rm = T), 
             sf_cum = sum(stormflow)) %>%
   ungroup() %>%
-  mutate(date = as.Date(paste0(year, "-", month, "-01"), 
-                        format = "%Y-%m-%d")) %>%
-  arrange(date)
+ # mutate(date = as.Date(paste0(year, "-", month, "-01"), 
+ #                       format = "%Y-%m-%d")) %>%
+  rename(year = waterYear) %>%
+  arrange(year) %>%
+  mutate(precip_0 = ifelse(precip_0 > 365, NA, precip_0))
+
 
 # precip <- read_csv('data/prism/prism_raw.csv') %>%
 #   as_tibble() %>%
@@ -221,31 +238,54 @@ cum_dat <- precip %>%
 
 
 
-pp <- ggplot(cum_dat, aes(date, precip_mean)) +
+p1 <- ggplot(cum_dat, aes(year, precip_max)) +
         geom_point() +
         geom_smooth(method = lm, lwd = 1, col = "black") +
         theme_minimal() +
         xlab("") +
-        xlim(as.Date("1970-01-01"), as.Date("2020-01-01"))
-
-bf <- ggplot(cum_dat, aes(date, bf_mean)) +
+        ylab("max precip (mm/day)") +
+        ggtitle("Precipitation in NHC watershed")
+p2 <- ggplot(cum_dat, aes(year, precip_mean)) +
+        geom_point() +
+        geom_smooth(method = lm, lwd = 1, col = "black") +
+        theme_minimal() +
+        xlab("") 
+p3 <- ggplot(cum_dat, aes(year, precip_0)) +
+        geom_point() +
+        geom_smooth(method = lm, lwd = 1, col = "black") +
+        theme_minimal() +
+        xlab("") +
+        ylab("Days with 0 precip") 
+  
+#        xlim(as.Date("1970-01-01"), as.Date("2020-01-01"))
+png("../figures/precipitation_trends.png", width = 6, height = 5, 
+    units = "in", res = 300)
+ggarrange(p1,p3, ncol = 1)
+dev.off()
+bf <- ggplot(cum_dat, aes(year, bf_mean)) +
         geom_point() +
         ylim(0, 10) + 
         ylab("baseflow (m3s)") +
         xlab("") +
         geom_smooth(method = lm, lwd = 1, col = "black") +
         theme_minimal() +
-        xlim(as.Date("1970-01-01"), as.Date("2020-01-01")) 
+        xlim(1970, 2020)
+#        xlim(as.Date("1970-01-01"), as.Date("2020-01-01")) 
 
-qq <- ggplot(cum_dat, aes(date, q_median)) +
+qq <- ggplot(cum_dat, aes(year, q_median)) +
         geom_point() +
         geom_smooth(method = lm, lwd = 1, col = "black") +
-        geom_point(aes(y = q_05), col = "steelblue") +
-        geom_smooth(aes(y = q_05), method = lm, lwd = 1, col = "steelblue") +
+        geom_point(aes(y = bf_median), col = "steelblue") +
+        geom_smooth(aes(y = bf_median), method = lm, lwd = 1, col = "steelblue") +
         theme_minimal() +
-        ylim(0,6) +
-        ylab("q median and 5% quantile (m3s)") +
-        xlim(as.Date("1970-01-01"), as.Date("2020-01-01")) 
+#        ylim(0,6) +
+        ylab("discharge (m3s)") +
+        xlim(1970, 2020) +
+        geom_text(x = 1981, y = 0.93, label = "median flow", 
+                  family = "Arial", hjust = 1, size = 4) +
+        geom_text(x = 1981, y = 0.715, label = "median baseflow",
+                  family = "Arial", hjust = 1, size = 4, col = "steelblue") 
+#        xlim(as.Date("1970-01-01"), as.Date("2020-01-01")) 
         
 jj <- monthly_q %>%
   filter(month == 7)
@@ -255,10 +295,11 @@ jul_bf <- ggplot(jj, aes(waterYear, bf_frac)) +
         theme_minimal()+
         labs(x = "", y = "July baseflow fraction")
 rbi <- ggplot(Q_stats[Q_stats$site_id=="nhc_blands",], aes(waterYear, RBI))+
-        geom_point(col = "grey25") +
-        geom_smooth(col = "steelblue", lwd=1.5) +
-        theme_minimal()+
-        xlab("")
+        geom_point() +
+        geom_smooth(method = lm, lwd = 1, col = "black") +
+        theme_minimal() +
+        xlab("") +
+        xlim(1970, 2020)
 
 air_t <- read_csv("../data/noaa_air_temp.csv") %>%
   rename(Date=date)
@@ -271,10 +312,10 @@ art <- ggplot(air_t, aes(Date, air_trend))+
         xlab("")+
         xlim(as.Date("1970-01-01"), as.Date("2020-01-01"))  +
         ggtitle("Trends for NHC at Blands")
-png(width=7, height=6, units='in', type='cairo', res=300,
+png(width=7, height=7, units='in', type='cairo', res=300,
     filename='../figures/nhc_blands_trends_3.png')
 
-  ggarrange(art, pp, qq, ncol = 1, nrow = 3)
+  ggarrange(art, qq, rbi, ncol = 1, nrow = 3)
 
 dev.off()
 

@@ -11,11 +11,9 @@ library(tidyverse)
 library(zoo)
 library(streamMetabolizer)
 
-
+# get Hall K values ####
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/code")
 
-#fix this version so that it is the one that has discharge
-# you can find how to do that in analyze_hall_k_values
 ##Convert KO2 to K600
 K600fromO2<-function(temp, KO2) {
   ((600/(1800.6-(120.1*temp)+(3.7818*temp^2)-(0.047608*temp^3)))^-0.5)*KO2
@@ -26,23 +24,117 @@ hall_k <- read_csv("../data/hall/hall_k_compiled.csv") %>%
   filter(method == "empirical") %>%
   mutate(K600 = K600fromO2(20, KO2.perday))
 
+ar_k <- read_csv("data/estimated_k_values.csv")
+  
 # d = depth (m), v = velocity (m/s), DO.sat = DO at saturation (mg/L), t = temp C
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data")
-cbp <- read_csv("metabolism/processed/CBP_lvl.csv") 
 
-# this should work for calculating things... but it doesnt for some reason
-# cbp$v_ms <- calc_velocity(cbp$discharge)
-# cbp$k2 <- 5.026 * (cbp$v_ms*3.28084)^0.969 * ((cbp$depth) * 3.28084)^(-1.673)
-# cbp$kO2 <- (2.3 * cbp$DO.sat * cbp$k2 )/(cbp$depth)
+# get measured k values and pair with discharge ####
+# nhc <- read_csv("metabolism/processed/NHC.csv") %>%
+#   mutate(DateTime_EST = force_tz(DateTime_EST, tz = "EST"),
+#          date = as.Date(DateTime_EST)) %>%
+#   filter(date == as.Date("2017-06-27")) %>%
+#   select(DO.obs, temp.water, level_m, depth, discharge)
+# unhc <- read_csv("metabolism/processed/NHC.csv") %>%
+#   mutate(DateTime_EST = force_tz(DateTime_EST, tz = "EST"),
+#          date = as.Date(DateTime_EST)) %>%
+#   filter(date == as.Date("2017-07-11")) %>%
+#   select(DO.obs, temp.water, level_m, depth, discharge)
 # 
-# plot(cbp$depth, cbp$k2)#, ylim = c(0,100))
-# points(hall_k$depth.m, hall_k$K2, col = 2)
+# summary(nhc)
+# nhc_k <- ar_k %>%
+#   filter(site =="NHC") %>%
+#   mutate(depth = .23,
+#          discharge = .14, 
+#          watertemp = 22,
+#          K600 = K600fromO2(watertemp, k_md/depth))
+# 
+# summary(unhc)
+# unhc_k <- ar_k %>%
+#   filter(site =="UNHC") %>%
+#   mutate(depth = .14,
+#          discharge = .02, 
+#          watertemp = 25,
+#          K600 = K600fromO2(watertemp, k_md/depth))
+# 
+# ar_k <- bind_rows(nhc_k, unhc_k)
+# write_csv(ar_k, "gas_data/measured_k_Ar_releases.csv")
 
-#hall_k$v_ms <- calc_velocity(hall_k$discharge_m3s)
-# hall_k$calc_v <- 
-#   hall_k$k2 <- 5.026 * (hall_k$v_ms*3.28084)^0.969 * (hall_k$depth.m * 3.28084)^-1.673
-# hall_k$kO2 <- (2.3 * 9 * hall_k$k2 * 1.0241^(20 - 20))/(hall_k$depth.m)
 
+# calc k from Hall 1970 equation ####
+
+setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data")
+# This section is where I figured out how to do this and double checked it looked right
+cbp <- read_csv("metabolism/processed/CBP_lvl.csv") %>%
+  group_by(date = as.Date(force_tz(DateTime_EST, tz = "EST"))) %>%
+  select(date, discharge, depth, level_m, DO.obs, DO.sat, temp_C = temp.water) %>%
+  summarize_all(mean, na.rm = T) %>%
+  mutate(v_ms = calc_velocity(discharge),
+         v2_ms = discharge/depth/15,
+         v_fs = v2_ms*3.28084,
+         depth_f = depth*3.28084)
+
+cbp_k <- cbp %>%
+  mutate(k2_20 = 5.026 * (v_fs)^0.969 * ((depth_f))^(-1.673),
+         k2 = k2_20 * 1.0241 ^(temp_C - 20),
+         k = (2.3 * (DO.sat) * k2 )/ 24,
+         K600 = K600fromO2(temp_C, k2_20),
+         K600 = ifelse(K600 > 20, NA, K600))
+
+plot(cbp_k$depth, cbp_k$v2_ms, log = "y")
+points(hall_k$depth.m, hall_k$v_ms, col = 2, pch = 19)
+
+plot(cbp_k$depth, cbp_k$k2_20, log = "y")
+points(hall_k$depth.m, hall_k$k2_d, col = 2, pch = 19)
+
+plot(cbp_k$depth, cbp_k$k, ylim = c(0,1))
+points(hall_k$depth.m, hall_k$k_gm3hr, col = 2, pch = 19)
+
+plot(cbp_k$depth, cbp_k$K600, ylim = c(0,2))
+points(hall_k$depth.m, K600fromO2(28,hall_k$k2_d), col = 2, pch = 19)
+
+# Calculate K600 for sites ####
+
+# this width needs to be replaced with actual data from longitudinal surveys
+widths <- data.frame(site = c("NHC", "PM", "CBP", "WB", "WBP", "UNHC"),
+                    width_m = c(15, 17, 18, 15, 15, 13))
+
+# This loop needs to be stepped through for each individual site. 
+kk <- data.frame()
+for(site in widths$site){  
+    if(site %in% c("NHC", "UNHC")){
+      siten = site
+    } else {
+      siten = paste0(site, "_lvl")
+    }
+    width <- widths$width_m[widths$site == site]
+    
+    dat <- read_csv(paste0("metabolism/processed/", siten, ".csv")) %>%
+      group_by(date = as.Date(force_tz(DateTime_EST, tz = "EST"))) %>%
+      select(date, discharge, depth, DO.obs, DO.sat, temp_C = temp.water) %>%
+      summarize_all(mean, na.rm = T) %>%
+      mutate(v_ms = discharge/depth/width,
+             v_fs = v_ms*3.28084,
+             depth_f = depth*3.28084, 
+             # calc k2 from Churchill 1962 equation in the Hall 1970 paper
+             k2_20 = 5.026 * (v_fs)^0.969 * ((depth_f))^(-1.673),
+             # temperature correct k2
+             #k2 = k2_20 * 1.0241 ^(temp_C - 20),
+             # another equation from Hall 1970, appendix 
+             k_gm3hr = (2.3 * (DO.sat-DO.obs) * k2 )/ 24,
+             # convert to K600 for SM
+             K600 = K600fromO2(temp_C, k2_20),
+             K600 = ifelse(K600 > 20, NA, K600)) %>%
+      select(date, discharge, depth, temp_C, v_ms, K600, k2_20, k_gm3hr) %>%
+      mutate(site = site)
+    
+    plot(dat$depth, dat$K600, pch = 20, main = site, col = "grey50")
+    points(hall_k$depth.m, K600fromO2(20, hall_k$k2_d), col = 2, pch = 20)
+    
+    kk <- bind_rows(kk, dat)
+}
+
+# Previous attempt ####
 # Hall used the numbers from stream morphology for his calculations, so I will too
 hallQ <- log(range(hall_k$discharge_m3s))
 # #get the range of all Q's
@@ -56,7 +148,8 @@ comb <- hall_k %>%
   mutate(logQ = log(discharge_m3s)) %>%
   select(K600, logQ) %>%
   full_join(data.frame(nodes = Q,
-                       logQ = Q)) 
+                       logQ = Q)) %>%
+  arrange(logQ)
 
 comb$K600[which(comb$logQ <= hallQ[1])] <- hall_k$K600[1]
 comb$K600[which(comb$logQ >= hallQ[2])] <- 

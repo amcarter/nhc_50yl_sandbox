@@ -1,7 +1,7 @@
 library(geoknife)
 library(prism)
 library(tidyverse)
-# library(lubridate)
+library(lubridate)
 # library(plyr)
 # library(sf)
 # library(MODISTools)
@@ -548,6 +548,142 @@ get_gee_imgcol = function(gee_id, band, start, end, subset){
     return(gee_imgcol)
 }
 
+get_gee = function(gee_id,
+                   band,
+                   start,
+                   end,
+                   res){
+
+    imgcol = get_gee_imgcol(gee_id = gee_id,
+                            # band = band,
+                            start = start,
+                            end = end)
+
+    Gout = list()
+
+    Gout$Gmed = ee_extract(x = imgcol,
+                           y = wb,
+                           scale = res,
+                           fun = ee$Reducer$median(),
+                           # sf = FALSE)
+                           sf = T)
+
+    Gout$Gmean = ee_extract(x = imgcol,
+                            y = wb,
+                            scale = res,
+                            fun = ee$Reducer$mean(),
+                            sf = FALSE)
+
+    Gout$Gstd = ee_extract(x = imgcol,
+                           y = wb,
+                           scale = res,
+                           fun = ee$Reducer$stdDev(),
+                           sf = FALSE)
+
+    Gout$Gcnt = ee_extract(x = imgcol,
+                           y = wb,
+                           scale = res,
+                           fun = ee$Reducer$count(),
+                           sf = FALSE)
+
+    Gout$Gmax = ee_extract(x = imgcol,
+                           y = wb,
+                           scale = res,
+                           fun = ee$Reducer$max(),
+                           sf = FALSE)
+
+    Gout$Gmin = ee_extract(x = imgcol,
+                           y = wb,
+                           scale = res,
+                           fun = ee$Reducer$min(),
+                           sf = FALSE)
+
+    Gnames = names(Gout)
+
+    for(gn in Gnames){
+
+        if(band %in% c('Lai_500m', 'Fpar_500m', 'Percent_Tree_Cover',
+                       'Percent_NonTree_Vegetation',
+                       'Percent_NonVegetated')){
+            rgx = 'X([0-9]{4}_[0-9]{2}_[0-9]{2})_(.+)'
+            # } else if(band %in% c('Lai_500m', 'Fpar_500m')){
+            #     rgx = 'X([0-9]{4}_[0-9]{2}_[0-9]{2})_(.+)'
+        } else {
+            rgx = 'X([0-9]+)_(.+)'
+        }
+
+        z = pivot_longer(Gout[[gn]],
+                         cols = everything(),
+                         names_pattern = rgx,
+                         names_to = c('date', '.value'))
+
+        colnames(z)[2] = paste(colnames(z)[2],
+                               substr(gn, 2, nchar(gn)),
+                               sep = '_')
+
+        Gout[[gn]] = z
+    }
+
+    Gout = purrr::reduce(Gout,
+                         full_join,
+                         by = 'date')
+
+    return(Gout)
+}
+
+# zz = get_gee_imgcol(gee_id = 'UMT/NTSG/v2/LANDSAT/NPP',
+#         band = 'annualNPP',
+#         start = '1968-01-01',
+#         end = '2020-12-31')
+# ee_s2 <- ee$ImageCollection('UMT/NTSG/v2/LANDSAT/NPP')$
+#     filterDate("2016-01-01", "2016-01-31")$
+#     filterBounds(sf_as_ee(wb))
+# ee_s2$size()$getInfo() # 126
+# # Get the first 5 elements
+# ee_get(ee_s2, index = 0:4)$size()$getInfo() # 5
+
+get_gee_chunk = function(gee_id,
+                         band,
+                         start,
+                         end,
+                         res,
+                         chunk_size_yr){
+
+    if(chunk_size_yr < 2) stop('chunk_size_yr must be at least 2')
+
+    startyr = lubridate::year(as.Date(start))
+    endyr = lubridate::year(as.Date(end))
+    # dif = as.numeric(difftime(start, end, units = 'days') / 365)
+    nyrs = endyr - startyr + 1
+
+    startseq = seq(startyr, endyr - chunk_size_yr, chunk_size_yr)
+    # endseq = seq(startyr + chunk_size_yr, endyr, chunk_size_yr)
+    # nchunks = floor(nyrs / chunk_size_yr)
+    nchunks = length(startseq)
+
+    geeout = tibble()
+    lastyr_adj = 1
+    for(i in 1:nchunks){
+        try_err <<- FALSE
+        if(i == nchunks && nyrs %% 2 == 1) lastyr_adj = 0
+        starti = paste(startseq[i], '01-01', sep='-')
+        endi = paste(startseq[i] + chunk_size_yr - lastyr_adj, '12-31', sep='-')
+        # geechunk = try(get_gee(gee_id, band, start = starti, end = endi, res))
+        # if('try-error' %in% class(geechunk){
+        geechunk = tryCatch({
+            get_gee(gee_id, band, start = starti, end = endi, res)
+        }, error = function(e){
+            try_err <<- TRUE
+            print(paste(starti, 'to', endi, 'failed'))
+        })
+        if(try_err) next
+
+        geeout = bind_rows(geeout, geechunk)
+    }
+
+    return(geeout)
+}
+
 # 2. delineate the NHC watershed; load as shapefile ####
 
 if(rebuild_all){
@@ -689,88 +825,6 @@ for(p in nwalt_paths){
 
 # 8. get GEE layers (rgee setup is a beast) ####
 
-get_gee = function(gee_id,
-                   band,
-                   start,
-                   end,
-                   res){
-
-    imgcol = get_gee_imgcol(gee_id = gee_id,
-                            band = band,
-                            start = start,
-                            end = end)
-
-    Gout = list()
-
-    Gout$Gmed = ee_extract(x = imgcol,
-                           y = wb,
-                           scale = res,
-                           fun = ee$Reducer$median(),
-                           sf = FALSE)
-
-    Gout$Gmean = ee_extract(x = imgcol,
-                            y = wb,
-                            scale = res,
-                            fun = ee$Reducer$mean(),
-                            sf = FALSE)
-
-    Gout$Gstd = ee_extract(x = imgcol,
-                           y = wb,
-                           scale = res,
-                           fun = ee$Reducer$stdDev(),
-                           sf = FALSE)
-
-    Gout$Gcnt = ee_extract(x = imgcol,
-                           y = wb,
-                           scale = res,
-                           fun = ee$Reducer$count(),
-                           sf = FALSE)
-
-    Gout$Gmax = ee_extract(x = imgcol,
-                           y = wb,
-                           scale = res,
-                           fun = ee$Reducer$max(),
-                           sf = FALSE)
-
-    Gout$Gmin = ee_extract(x = imgcol,
-                           y = wb,
-                           scale = res,
-                           fun = ee$Reducer$min(),
-                           sf = FALSE)
-
-    Gnames = names(Gout)
-
-    for(gn in Gnames){
-
-        if(band %in% c('Lai_500m', 'Fpar_500m', 'Percent_Tree_Cover',
-                       'Percent_NonTree_Vegetation',
-                       'Percent_NonVegetated')){
-            rgx = 'X([0-9]{4}_[0-9]{2}_[0-9]{2})_(.+)'
-        # } else if(band %in% c('Lai_500m', 'Fpar_500m')){
-        #     rgx = 'X([0-9]{4}_[0-9]{2}_[0-9]{2})_(.+)'
-        } else {
-            rgx = 'X([0-9]+)_(.+)'
-        }
-
-        z = pivot_longer(Gout[[gn]],
-                         cols = everything(),
-                         names_pattern = rgx,
-                         names_to = c('date', '.value'))
-
-        colnames(z)[2] = paste(colnames(z)[2],
-                               substr(gn, 2, nchar(gn)),
-                               sep = '_')
-
-        Gout[[gn]] = z
-    }
-
-    Gout = purrr::reduce(Gout,
-                         full_join,
-                         by = 'date')
-
-    return(Gout)
-}
-
 #annual NPP
 Gnpp = get_gee(gee_id = 'UMT/NTSG/v2/LANDSAT/NPP',
                band = 'annualNPP',
@@ -799,6 +853,13 @@ Gfpar = get_gee(gee_id = 'MODIS/006/MOD15A2H',
                 end = '2020-12-31',
                 res = 500)
 
+#landcover (MODIS) [NEEDS WORK]
+Gtyp1 = get_gee(gee_id = 'MODIS/006/MCD12Q1',
+                band = 'LC_Type1',
+                start = '1968-01-01',
+                end = '2020-12-31',
+                res = 500)
+
 #tree cover (MODIS)
 Gtree = get_gee(gee_id = 'MODIS/006/MOD44B',
                 band = 'Percent_Tree_Cover',
@@ -820,21 +881,87 @@ Gbare = get_gee(gee_id = 'MODIS/006/MOD44B',
                 end = '2020-12-31',
                 res = 250)
 
-#impervious surface (NLCD)
-Gimperv = get_gee(gee_id = 'USGS/NLCD',
-                  band = 'impervious',
-                  start = '1968-01-01',
-                  end = '2020-12-31',
-                  res = 30)
+#precip (PRISM)
+Gppt = get_gee_chunk(gee_id = 'OREGONSTATE/PRISM/AN81d',
+                     band = 'ppt',
+                     start = '1968-01-01',
+                     end = '2020-12-31',
+                     res = 4000,
+                     chunk_size_yr = 2)
+write_csv(Gppt, '~/git/papers/alice_nhc/data/gee/ppt.csv')
 
-#tree cover (NLCD)
-Gtree2 = get_gee(gee_id = 'USGS/NLCD',
-                 band = '24',
-                 # band = 'landcover',
-                 # band = 'percent_tree_cover',
-                 start = '1968-01-01',
-                 end = '2020-12-31',
-                 res = 30)
+#mean temp (PRISM)
+Gtmean = get_gee_chunk(gee_id = 'OREGONSTATE/PRISM/AN81d',
+                     band = 'tmean',
+                     start = '1968-01-01',
+                     end = '2020-12-31',
+                     res = 4000,
+                     chunk_size_yr = 2)
+write_csv(Gtmean, '~/git/papers/alice_nhc/data/gee/tmean.csv')
+
+#max temp (PRISM)
+Gtmax = get_gee_chunk(gee_id = 'OREGONSTATE/PRISM/AN81d',
+                     band = 'tmax',
+                     start = '1968-01-01',
+                     end = '2020-12-31',
+                     res = 4000,
+                     chunk_size_yr = 2)
+write_csv(Gtmax, '~/git/papers/alice_nhc/data/gee/tmax.csv')
+
+#min temp (PRISM)
+Gtmin = get_gee_chunk(gee_id = 'OREGONSTATE/PRISM/AN81d',
+                     band = 'tmin',
+                     start = '1968-01-01',
+                     end = '2020-12-31',
+                     res = 4000,
+                     chunk_size_yr = 2)
+write_csv(Gtmin, '~/git/papers/alice_nhc/data/gee/tmin.csv')
+
+
+zz = ee$FeatureCollection('USGS/NLCD')
+subset = zz$filterBounds(wb)
+rgee$
+ee_as_sf(
+    # filterDate(start, end)$
+
+gee_imgcol = ee$ImageCollection(gee_id)$
+    filterDate(start, end)$
+    select(band)$
+    map(function(x){
+        date <- ee$Date(x$get("system:time_start"))$format('YYYY_MM_dd')
+        x$set("RGEE_NAME", date)
+    })
+
+wb_ee = sf_as_ee(wb)
+# wb_ee$geometry()
+
+lcv <- ee$FeatureCollection('USGS/NLCD')$select('landcover')$
+    filterBounds(wb_ee) %>%
+    ee_as_sf()
+
+lcv <- ee$ImageCollection('USGS/NLCD')$select('landcover')$
+    filter(ee$Filter$eq('system:index', 'NLCD2011'))$first() %>%
+    ee$Image$clip(wb_ee) %>%
+# imp <- ee$ImageCollection('USGS/NLCD')$select('impervious') %>%
+    ee_as_stars(maxPixels = 20000000000)
+lcv = lcv %>%
+    sf::st_as_sf()
+mapview::mapview(lcv)
+# #impervious surface (NLCD)
+# Gimperv = get_gee(gee_id = 'USGS/NLCD',
+                  # band = 'impervious',
+                  # start = '1968-01-01',
+                  # end = '2020-12-31',
+                  # res = 30)
+#
+# #tree cover (NLCD)
+# Gtree2 = get_gee(gee_id = 'USGS/NLCD',
+#                  band = '24',
+#                  # band = 'landcover',
+#                  # band = 'percent_tree_cover',
+#                  start = '1968-01-01',
+#                  end = '2020-12-31',
+#                  res = 30)
 
 write_csv(Gbare, '~/git/papers/alice_nhc/data/gee/vegless.csv')
 write_csv(Gveg, '~/git/papers/alice_nhc/data/gee/nontree_veg.csv')

@@ -10,6 +10,7 @@
 library(tidyverse)
 library(zoo)
 library(streamMetabolizer)
+library(lubridate)
 
 # get Hall K values ####
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/code")
@@ -20,9 +21,9 @@ K600fromO2<-function(temp, KO2) {
 }
 
 hall_k <- read_csv("../data/hall/hall_tableA2_k_morphology_extended.csv")# %>%
-hall_k <- read_csv("../data/hall/hall_k_compiled.csv") %>%
-  filter(method == "empirical") %>%
-  mutate(K600 = K600fromO2(20, KO2.perday))
+# hall_k <- read_csv("../data/hall/hall_k_compiled.csv") %>%
+#   filter(method == "empirical") %>%
+#   mutate(K600 = K600fromO2(20, KO2.perday))
 
 ar_k <- read_csv("data/estimated_k_values.csv")
   
@@ -70,7 +71,7 @@ cbp <- read_csv("metabolism/processed/CBP_lvl.csv") %>%
   select(date, discharge, depth, level_m, DO.obs, DO.sat, temp_C = temp.water) %>%
   summarize_all(mean, na.rm = T) %>%
   mutate(v_ms = calc_velocity(discharge),
-         v2_ms = discharge/depth/15,
+         v2_ms = discharge/depth/18,
          v_fs = v2_ms*3.28084,
          depth_f = depth*3.28084)
 
@@ -111,30 +112,65 @@ for(site in widths$site){
     
     dat <- read_csv(paste0("metabolism/processed/", siten, ".csv")) %>%
       group_by(date = as.Date(force_tz(DateTime_EST, tz = "EST"))) %>%
-      select(date, discharge, depth, DO.obs, DO.sat, temp_C = temp.water) %>%
+      select(date, discharge, depth, level_m,
+             DO.obs, DO.sat, temp_C = temp.water) %>%
       summarize_all(mean, na.rm = T) %>%
-      mutate(v_ms = discharge/depth/width,
-             v_fs = v_ms*3.28084,
+      mutate(v_ms = calc_velocity(discharge),
+             v2_ms = discharge/level_m/width,
+             v_fs = v2_ms*3.28084,
              depth_f = depth*3.28084, 
              # calc k2 from Churchill 1962 equation in the Hall 1970 paper
              k2_20 = 5.026 * (v_fs)^0.969 * ((depth_f))^(-1.673),
              # temperature correct k2
-             #k2 = k2_20 * 1.0241 ^(temp_C - 20),
+             k2 = k2_20 * 1.0241 ^(temp_C - 20),
              # another equation from Hall 1970, appendix 
-             k_gm3hr = (2.3 * (DO.sat-DO.obs) * k2 )/ 24,
+             k_gm3hr = (2.3 * (DO.sat) * k2 )/ 24,
              # convert to K600 for SM
              K600 = K600fromO2(temp_C, k2_20),
              K600 = ifelse(K600 > 20, NA, K600)) %>%
-      select(date, discharge, depth, temp_C, v_ms, K600, k2_20, k_gm3hr) %>%
+     # select(date, discharge, depth, temp_C, v_ms, K600, k2_20, k_gm3hr) %>%
       mutate(site = site)
+    dat$depth <- dat$level_m
+    # plot(dat$depth, dat$v_ms, xlim = c(0,1), ylim = c(0,.5))
+    # points(hall_k$depth.m, hall_k$v_ms, col = 2, pch = 19)
+    # plot(dat$depth, dat$k2_20, xlim = c(0,1), ylim = c(0,8))
+    # points(hall_k$depth.m, hall_k$k2_d, col = 2, pch = 19)
+    # plot(dat$depth, dat$K600, pch = 20, main = site, col = "grey50")
+    # points(hall_k$depth.m, K600fromO2(20, hall_k$k2_d), col = 2, pch = 20)
     
-    plot(dat$depth, dat$K600, pch = 20, main = site, col = "grey50")
-    points(hall_k$depth.m, K600fromO2(20, hall_k$k2_d), col = 2, pch = 20)
+    plot(dat$discharge, dat$K600, log = "xy", main = site)
     
     kk <- bind_rows(kk, dat)
 }
 
-# Previous attempt ####
+write_csv(kk, "siteData/KQ_hall_prior_from_equation.csv")
+# generate K/Q nodes for SM for each site year:
+kq <- data.frame()
+for(site in unique(kk$site)){
+  dat <- kk %>% 
+    filter(site == !!site)
+  plot(dat$discharge, dat$K600, log = "xy", main = site)
+  m <- lm(log(K600) ~ log(discharge), dat)
+  mm <- summary(m)$coefficients[,1]
+  Qrng <- range(log(dat$discharge), na.rm = T)
+  delta = 2
+  n = 6
+  while(delta > 1){
+    n = n + 1
+    delta <- (Qrng[2]-Qrng[1])/n
+  }  
+  Qnodes <- seq(Qrng[1] + delta/2, by = delta, length.out = n)
+  lnK600 <- mm[1] + mm[2] * Qnodes
+  points(exp(Qnodes), exp(lnK600), col = 2, pch = 19)
+  nodes <- data.frame(site = site, 
+                      lnQ = Qnodes,
+                      lnK600 = lnK600)
+  kq <- bind_rows(nodes, kq)
+}
+
+write_csv(kq, "siteData/KQ_hall_prior_from_equation.csv")
+
+ # Previous attempt ####
 # Hall used the numbers from stream morphology for his calculations, so I will too
 hallQ <- log(range(hall_k$discharge_m3s))
 # #get the range of all Q's

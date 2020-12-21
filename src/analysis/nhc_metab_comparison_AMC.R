@@ -56,7 +56,7 @@ nep_70 = gpp_70 - er_70
 
 #retrieve contemporary data by year; get K and O2 data for later
 
-nhc_new <- read_csv("data/NHC_metab_allsites_fixedHallK.csv") %>%
+nhc_new <- read_csv("data/NHC_metab_allsites_fixedHallK_v2.csv") %>%
     mutate(GPP = ifelse(GPP > -5, GPP, NA), 
            ER = ifelse(ER > -20, ER, NA),
            K600 = ifelse(K600 <= 0, NA, K600),
@@ -103,13 +103,13 @@ qqnorm(gpp_new); abline(1, 1, col='red', lty=2)
 
 #distribution plots ####
 png(width=9, height=6, units='in', type='cairo', res=300,
-    filename='../figures/metab_distributions.png')
+    filename='../figures/metab_distributions_v2.png')
 
 defpar = par(mfrow=c(2,3))
 
 #plot GPP dists, then and now
 plot(density(gpp_68_70, na.rm=TRUE), xlim=c(-3, 10), bty='l', col='sienna3',
-    main='GPP 1968-70 vs. 2017-19', xlab='GPP', ylim=c(0,1.2))
+    main='GPP 1968-70 vs. 2017-19', xlab='GPP', ylim=c(0,1.4))
 lines(density(gpp_new, na.rm=TRUE), col='blue')
 legend('topright', 
        legend=c('68-70; n=76', 
@@ -119,7 +119,7 @@ legend('topright',
 
 #plot ER dists, then and now
 plot(density(er_68_70 * -1, na.rm=TRUE), xlim=c(-15, 1), bty='l', col='sienna3',
-    main='ER 1968-70 vs. 2017-19', xlab='ER', ylim=c(0,0.7))
+    main='ER 1968-70 vs. 2017-19', xlab='ER', ylim=c(0,0.9))
 lines(density(er_new, na.rm=TRUE), col='blue')
 legend('topleft', 
        legend=c('68-70; n=76', 
@@ -129,7 +129,7 @@ legend('topleft',
 
 #plot NEP dists, then and now
 plot(density(nep_68_70, na.rm=TRUE), xlim=c(-15, 2), bty='l', col='sienna3',
-    main='NEP 1968-70 vs. 2017-19', xlab='NEP', ylim=c(0,1.0))
+    main='NEP 1968-70 vs. 2017-19', xlab='NEP', ylim=c(0,1.3))
 lines(density(nep_new, na.rm=TRUE), col='blue')
 legend('topleft', 
        legend=c('68-70; n=76', 
@@ -141,7 +141,7 @@ legend('topleft',
 cols = viridis(6)
 cols = c(rep('sienna3', 3), rep('blue', 3))
 plot(density(gpp_68, na.rm=TRUE), xlim=c(-1, 9), bty='l', col=cols[1],
-    main='GPP by year', xlab='GPP', ylim=c(0,1.3))
+    main='GPP by year', xlab='GPP', ylim=c(0,1.4))
 lines(density(gpp_69, na.rm=TRUE), col=cols[2])
 lines(density(gpp_70, na.rm=TRUE), col=cols[3])
 lines(density(gpp_17, na.rm=TRUE), col=cols[4])
@@ -157,7 +157,7 @@ legend('topright',
 
 #plot ER dists by year
 plot(density(er_68 * -1, na.rm=TRUE), xlim=c(-9, 1), bty='l', col=cols[1],
-    main='ER by year', xlab='ER', ylim=c(0,0.8))
+    main='ER by year', xlab='ER', ylim=c(0,0.9))
 lines(density(er_69 * -1, na.rm=TRUE), col=cols[2])
 lines(density(er_70 * -1, na.rm=TRUE), col=cols[3])
 lines(density(er_17, na.rm=TRUE), col=cols[4])
@@ -173,7 +173,7 @@ legend('topleft',
 
 #plot NEP dists by year
 plot(density(nep_68, na.rm=TRUE), xlim=c(-8, 2), bty='l', col=cols[1],
-    main='NEP by year', xlab='NEP', ylim=c(0,1.1))
+    main='NEP by year', xlab='NEP', ylim=c(0,1.3))
 lines(density(nep_69, na.rm=TRUE), col=cols[2])
 lines(density(nep_70, na.rm=TRUE), col=cols[3])
 lines(density(nep_17, na.rm=TRUE), col=cols[4])
@@ -258,7 +258,7 @@ beanplot(wb_num, horizontal=TRUE, col='orange', xaxt='n',
 mtext('Wood Bridge', 2)
 legend('topright', legend=paste('n =', length(! is.na(wb_num))),
     bty='n', cex=1.3, text.font=2)
-o
+
 # ax_dt = as.numeric(historic_dates)
 # ax_seq = seq(ax_dt[1], ax_dt[which.max(ax_dt)], length.out=10)
 # axis(1, at=ax_seq, labels=as.Date(ax_seq), las=1, cex.axis=1.7)
@@ -671,7 +671,7 @@ k_daily = tapply(nhc_new$k, nhc_new$date, mean, na.rm=TRUE)
 
 #plot distributions of historic and modern k
 png(width=7, height=6, units='in', type='cairo', res=300,
-    filename='~/Dropbox/streampulse/figs/NHC_comparison/k_dists_filtered.png')
+    filename='../figures/k_dists_filtered_v2.png')
 par(mfrow = c(1,1))
 xlims = range(c(k_daily, nhc_68_70_k$k_daily), na.rm=TRUE)
 cur_dens = density(k_daily, na.rm=TRUE)
@@ -703,7 +703,7 @@ legend('topright', legend=c('then (diurnal); n=9', 'then (morphology); n=14',
 dev.off()
 
 #compare K by depth
-k_by_depth = tapply(nhc_new_K$k, round(nhc_new_K$depth, 3), mean, na.rm=TRUE)
+k_by_depth = tapply(nhc_new$k, round(nhc_new$depth, 3), mean, na.rm=TRUE)
 k_sub = k_by_depth[names(k_by_depth) %in% as.character(k_morphology$depth)]
 still_need = k_morphology$depth[! as.character(k_morphology$depth) %in% names(k_sub)]
 sort(unique(substr(names(k_by_depth), 1, 5)))

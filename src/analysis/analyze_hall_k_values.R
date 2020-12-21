@@ -1,6 +1,6 @@
 # Analysis of Hall K values
 
-library(nleqslv)
+# library(nleqslv)
 library(tidyverse)
 # 11/17/2020
 
@@ -28,7 +28,8 @@ hall_K <- bind_rows(diurnalk, morphk, domek)
 kk <- morphk %>%
   mutate(depth.f = depth.m*3.28084,
          v_fs = (k2_d / (5.026 * depth.f ^ (-1.673)))^(1/.969),
-         v_ms = v_fs/3.28084) %>%
+         v_ms = v_fs/3.28084,
+         K600 = K600fromO2(20, k2_d)) %>%
   select(-v_fs)
 
 T0 = 2.00856

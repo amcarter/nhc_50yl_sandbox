@@ -15,7 +15,7 @@ ylims=c(-15,5)
 GPP.col="#74B16D"
 ER.col="#B99D82"
 PAR.col = "#FFE083"
-hall_met <- read_csv("data/hall_table_15.csv")
+hall_met <- read_csv("data/hall/hall_table_15.csv")
 hall_met$ER_gO2m2d <- -hall_met$ER_gO2m2d
 # NHCdat <- readRDS("../NHC_2019_metabolism/data/metabolism/condensed/allNHCsites.rds")
 # metab <- NHCdat$metab

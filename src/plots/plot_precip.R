@@ -44,11 +44,12 @@ pp <- all %>%
   select(-cum90, -max_precip) %>%
   pivot_longer(cols= -year, names_to = "variable", values_to = "value")
 
+png("../figures/precip.png", width = 7.5, height = 6, units = "in", res = 300)
 ggplot(pp, aes(x = year, y = value)) +
   geom_point() +
   facet_wrap(.~variable, scales = "free_y", dir = "v", switch = "y") +
-  geom_smooth(method = lm, lwd = 1, col = "black") 
+  geom_smooth(method = lm, lwd = 1, col = "black") +
   theme_minimal()
-
+dev.off()
 
 

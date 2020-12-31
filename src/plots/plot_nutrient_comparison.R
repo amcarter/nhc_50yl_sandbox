@@ -1,5 +1,5 @@
 # compare nutrients measured in Hall 1970 to today
-
+library(tidyverse)
 
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/")
 chem <- read_csv("water_chemistry/water_chemistry_2019-2020_compiled.csv")
@@ -56,10 +56,10 @@ plot(now$doy, now$tdn_mgl, type = "l", lty = 2)
 lines(now$doy, now$no3n_mgl, type = "l", lty = 1)
 points(hall$doy, hall$tdn_mgl, pch = 19)
 
-hall_col = "steelblue"
+hall_col = "brown3"
 now_col = "black"
 
-png("../figures/nutrient_comparison.png", width = 7, height = 6, 
+png("../figures/nutrient_comparison.png", width = 6, height = 5, 
     units = "in", res = 300)  
   par(mfrow=c(2,2), mar = c(4, 4, .5, 0.1))
   plot(density(hall$tdn_mgl, na.rm = T), type = "l", col = hall_col,

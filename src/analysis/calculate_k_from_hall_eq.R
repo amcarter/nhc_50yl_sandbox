@@ -66,7 +66,7 @@ setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/
 
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data")
 # This section is where I figured out how to do this and double checked it looked right
-cbp <- read_csv("metabolism/processed/CBP.csv") %>%
+cbp <- read_csv("metabolism/processed/nhc.csv") %>%
   group_by(date = as.Date(with_tz(DateTime_UTC, tz = "EST"))) %>%
   select(date, discharge, depth, level_m, DO.obs, DO.sat, temp_C = temp.water) %>%
   summarize_all(mean, na.rm = T) %>%
@@ -124,7 +124,7 @@ for(site in widths$site){
              # convert to K600 for SM
              K600 = K600fromO2(temp_C, k2_20),
              K600 = ifelse(K600 > 20, NA, K600)) %>%
-     # select(date, discharge, depth, temp_C, v_ms, K600, k2_20, k_gm3hr) %>%
+      # select(date, discharge, depth, temp_C, v_ms, K600, k2_20, k_gm3hr) %>%
       mutate(site = site)
     plot(dat$depth, dat$K600, pch = 20, main = site, col = "grey50", ylim = c(0,2))
     points(hall_k$depth.m, K600fromO2(20, hall_k$k2_d), col = 2, pch = 20)

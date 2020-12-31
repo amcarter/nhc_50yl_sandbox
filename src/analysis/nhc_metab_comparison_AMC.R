@@ -109,7 +109,7 @@ defpar = par(mfrow=c(2,3))
 
 #plot GPP dists, then and now
 plot(density(gpp_68_70, na.rm=TRUE), xlim=c(-3, 10), bty='l', col='sienna3',
-    main='GPP 1968-70 vs. 2017-19', xlab='GPP', ylim=c(0,1.4))
+     main='GPP 1968-70 vs. 2017-19', xlab='GPP', ylim=c(0,1.4))
 lines(density(gpp_new, na.rm=TRUE), col='blue')
 legend('topright', 
        legend=c('68-70; n=76', 
@@ -119,7 +119,7 @@ legend('topright',
 
 #plot ER dists, then and now
 plot(density(er_68_70 * -1, na.rm=TRUE), xlim=c(-15, 1), bty='l', col='sienna3',
-    main='ER 1968-70 vs. 2017-19', xlab='ER', ylim=c(0,0.9))
+     main='ER 1968-70 vs. 2017-19', xlab='ER', ylim=c(0,0.9))
 lines(density(er_new, na.rm=TRUE), col='blue')
 legend('topleft', 
        legend=c('68-70; n=76', 

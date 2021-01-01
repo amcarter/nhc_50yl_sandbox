@@ -30,57 +30,78 @@ fit_metab_hall <- function(day, k2, dt = 15, plot = TRUE){
     return(m)
   }
   
+  # build met polygons ####
   # find sunrise and sunset based on light
   sun <- which(day$light > 0)
   sunrise <- sun[1]-1
   sunset <- sun[length(sun)]+1
   # find minimum change in two hours post sunset
-  ps_min <- sunset -1 + which.min(day$dodt_cor[sunset:(sunset+8)])
+  ps_min <- sunset -1 + which.min(day$dodt_cor[sunset:(sunset+2*60/dt)])
   
   # build polygon for gpp by connecting sunrise to post sunset minimum
   a_gpp <- day %>%
     slice((sunrise):(ps_min)) %>%
-    select(hour, dodt_cor)
-  a_gpp$line = NA_real_
+    select(hour, dodt_cor) %>%
+    mutate(line = NA_real_)
+  a_gpp <- data.frame(hour = seq(a_gpp$hour[1], a_gpp$hour[nrow(a_gpp)], by = .25)) %>%
+    left_join(a_gpp, by = "hour")
+  
+  if(a_gpp$dodt_cor[1] > 0){
+    tmp <- data.frame(hour = a_gpp$hour[1], 
+                      dodt_cor = 0)
+    a_gpp <- bind_rows(tmp, a_gpp)
+  }
   a_gpp$line[c(1, nrow(a_gpp))] <- a_gpp$dodt_cor[c(1, nrow(a_gpp))]
   a_gpp <- a_gpp %>%
     mutate(line = na.approx(line),
-           dodt_cor = ifelse(dodt_cor < line, line, dodt_cor)) %>%
-    select(-line)
-  
+           dodt_cor = na.approx(dodt_cor),
+           dodt_cor = ifelse(dodt_cor < line, line, dodt_cor))
+
   # build polygon for er that is all negative values of DO/dt
-  a_er <- day %>%
+  a_er <- data.frame(hour = seq(0, 24, by = .25)) %>%
+    left_join(day, by = "hour") %>%
     select(hour, dodt_cor) %>%
-    mutate(dodt_cor = ifelse(dodt_cor > 0, 0, dodt_cor))
+    mutate(dodt_cor = na.approx(dodt_cor),
+           dodt_cor = ifelse(dodt_cor > 0, 0, dodt_cor)) %>%
+    left_join(a_gpp[,c(1,3)], by = "hour") %>%
+    mutate(dodt_cor = case_when(is.na(line) ~ dodt_cor,
+                                dodt_cor < line ~ dodt_cor,
+                                TRUE ~ line))
   start <- data.frame(hour = 0, dodt_cor = 0)
   end <- data.frame(hour = 24, dodt_cor = 0)
   a_er <- bind_rows(start, a_er, end)
-
   if(plot) {
   # par(mfrow = c(3,1))
   # plot(day$hour, day$DO.obs, type = "b")
   # plot(day$hour, day$DO.obs/day$DO.sat, type = "l")
   # abline(h = 1)
-  plot(day$hour, day$dodt_cor, type = "l",lty = 2, main = d, lwd = 2, 
+  plot(day$hour, day$dodt_cor, type = "l",lty = 1, main = d, lwd = 2, 
        ylim = range(c(day$dodt, day$dodt_cor), na.rm = T),
        ylab = "dDO/dt (gO2/m3/hr)", xlab = "hour")
-  lines(day$hour, day$dodt, lwd = 2)
+  lines(day$hour, day$dodt, lwd = 2,lty = 2,)
   abline(h = 0)
   abline(v = day$hour[c(sunrise, sunset)], lwd = 2, 
          lty = 3, col = "goldenrod")
   # lines(day$hour, day$dodt_diff, lty = 2)
 
-  polygon(a_gpp$hour, a_gpp$dodt_cor, border = NA,
-          col = alpha("forestgreen", 0.3))
+  polygon(a_gpp$hour, a_gpp$dodt_cor, border = "black",
+          density = 20, angle = 45, 
+           col = alpha("forestgreen", 1))
   polygon(a_er$hour, a_er$dodt_cor, border = NA,
-          col = alpha("sienna", 0.3))
+          density = 20, angle = -45,
+          col = alpha("sienna", 1))
+  # points(day$hour, day$dodt_pred, pch = 19, col = 5)
   legend("topright",
-         legend = c("dDO/dt uncorrected", "dDO/dt corrected",
-                    "GPP", "ER", "sunrise/set"), 
-         fill = c(NA, NA, alpha("forestgreen", 0.4), alpha("sienna", 0.4), NA),
-         col = c(1, 1, NA, NA, "goldenrod"),
-         border = NA, 
-         lty = c(1, 2, NA, NA, 3),
+         legend = c("dDO/dt uncorrected", "dDO/dt corrected", 
+                    "sunrise/set",
+                    "GPP", "ER"), 
+          fill = c(NA, NA, NA, "forestgreen","sienna"),
+         density = c(0, 0, 0, 45, 45),
+         angle = c(NA, NA, NA, 45, -45),
+         col = c(1, 1, "goldenrod", NA, NA),
+         border = c(NA, NA, NA, 1,1), 
+         lty = c(2, 1, 3, NA, NA),
+         x.intersp = c(2, 2, 2, 0.5, 0.5),
          bty = "n")
   }
   
@@ -89,11 +110,12 @@ fit_metab_hall <- function(day, k2, dt = 15, plot = TRUE){
                   er_gO2m3d = abs(polyarea(a_er$hour, a_er$dodt_cor)),
                   K2_day = k2)
   
+  
   return(m)
 }
-fit_ts_metab_hall<- function(dat, kq_hall, s, plot = FALSE){
-  d1 <- as.Date(dat$DateTime_EST[1]) + 1
-  d2 <- as.Date(dat$DateTime_EST[nrow(dat)]) - 1
+fit_ts_metab_hall<- function(dat, kq_hall, s, plot = FALSE, dt = 15){
+  d1 <- as.Date(dat$DateTime_EST[1]) +1
+  d2 <- as.Date(dat$DateTime_EST[nrow(dat)]) -1
   
   dates <- seq(d1, d2, by = "day")
   met <- data.frame()
@@ -108,7 +130,7 @@ fit_ts_metab_hall<- function(dat, kq_hall, s, plot = FALSE){
              site == s)
     k2 <- kq$k2[1]
     
-    m <- fit_metab_hall(day, k2, plot = plot)
+    m <- fit_metab_hall(day, k2, plot = plot, dt = dt)
     met <- bind_rows(met, m)
   }
   
@@ -138,13 +160,13 @@ filter_hall_met <- function(met, flow_dates){
     left_join(flow_dates[,c(1,4)]) %>%
     mutate(across(all_of(c("GPP", "ER", "K600")), 
                   ~ ifelse(good_flow, ., NA)))
-  w <- range(which(!is.na(preds$GPP)), na.rm = T)
-  preds <- preds[w[1]:w[2],]
-  
   coverage <- data.frame(missing_data = sum(is.na(met$gpp_gO2m2d)),
                          bad_flow = sum(preds$good_flow == FALSE &
                                           !is.na(met$gpp_gO2m2d), na.rm = T),
                          total_days = nrow(preds))
+  w <- range(which(!is.na(preds$GPP)), na.rm = T)
+  preds <- preds[w[1]:w[2],]
+  
   sump <- preds %>%
     summarize(gpp_mean = mean(GPP, na.rm = T),
               gpp_median = median(GPP, na.rm = T),
@@ -179,33 +201,73 @@ filter_hall_met <- function(met, flow_dates){
   sump$er_cum <- cum$ER_cum[n]*365/n
   sump$daterange <- as.character(paste(cum$date[1], "-", cum$date[nrow(cum)]))
   sump$pctcoverage <- sum(!is.na(preds$GPP))/n
-
+  sump <- bind_cols(coverage, sump)
+  
   return(list(preds,
               sump,
               cum))
 }
+get_met_year<- function(dat, kq_hall, s, flow_dates, year){  
+  met <- fit_ts_metab_hall(dat, kq_hall, s)
+  # plot(met$date, met$gpp_gO2m2d, type = "l", col = "forestgreen",
+  #      ylim = range(c(met$gpp_gO2m2d, -met$er_gO2m2d), na.rm = T))
+  # lines(met$date, -met$er_gO2m2d, col = "sienna")
+  out <- filter_hall_met(met, flow_dates)
+  
+  preds = out[[1]] %>%
+    mutate(site = s,
+           year = year, 
+           ER = -ER)
+  met_sum = out[[2]]%>%
+    mutate(site = s,
+           year = year)
+  cum = out[[3]]%>%
+    mutate(site = s,
+           year = year, 
+           ER = -ER)
+  
+  m <- matrix(c(1,2,1,3,1,4), nrow = 2)
+  layout(m)
+  plot_hall_metab(preds, error = F)
+  mtext(s)
+  plot_kde_hall_metab(preds, lim = 7)
+  plot_KvER(preds)
+  plot_k(preds)
+     
+  return(list(preds, met_sum, cum))
+}           
 
 # Fit Metabolism ####
 filestring <- "metabolism/processed/"
-dat <- read_csv(paste0(filestring, "CBP.csv")) %>%
-  mutate(DateTime_EST = with_tz(DateTime_UTC, tz = "EST"))
-met <- fit_ts_metab_hall(dat, kq_hall, "CBP")
+sites <- c("NHC", "PM", "CBP", "WB", "WBP", "UNHC")
 
-plot(met$date, met$gpp_gO2m2d, type = "l", col = "forestgreen",
-     ylim = range(c(met$gpp_gO2m2d, -met$er_gO2m2d), na.rm = T))
-lines(met$date, -met$er_gO2m2d, col = "sienna")
+preds_all <- data.frame()
+met_summary <- data.frame()
+preds_filled_all <- data.frame()
+for(s in sites){
 
-out <- filter_hall_met(met, flow_dates)
-
-preds = out[[1]]
-met_sum = out[[2]]
-cum = out[[3]]
-
-met$ER <- -met$ER
-plot_hall_metab(met, error = F)
-
-plot_KvER(preds)
-
-plot_kde_hall_metab(met)
-plot_k(preds, xlim = 1)
-                
+  dat <- read_csv(paste0(filestring, s, ".csv"), guess_max = 10000) %>%
+    mutate(DateTime_EST = with_tz(DateTime_UTC, tz = "EST"))
+  # seq <- seq(1, nrow(dat), by = 4)
+  # dat <- dat[seq,]
+  if(s %in% c("NHC", "UNHC")){
+    for(y in 2017:2019){
+      yy <- ymd_hms(paste0(y, "-03-01 00:00:00"), tz = "EST")
+      dat1 <- dat %>%
+        filter(DateTime_EST >= yy, 
+               DateTime_EST <= yy + 24*60*60*366)
+      year = y
+      out <- get_met_year(dat1, kq_hall, s, flow_dates, year) 
+      preds_all <- bind_rows(preds_all, out[[1]])
+      met_summary <- bind_rows(met_summary, out[[2]])
+      preds_filled_all <- bind_rows(preds_filled_all, out[[3]])
+    }
+    next
+  }
+  year = 2019
+  
+  out <- get_met_year(dat, kq_hall, s, flow_dates, year) 
+  preds_all <- bind_rows(preds_all, out[[1]])
+  met_summary <- bind_rows(met_summary, out[[2]])
+  preds_filled_all <- bind_rows(preds_filled_all, out[[3]])
+}

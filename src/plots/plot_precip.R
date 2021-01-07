@@ -48,8 +48,17 @@ png("../figures/precip.png", width = 7.5, height = 6, units = "in", res = 300)
 ggplot(pp, aes(x = year, y = value)) +
   geom_point() +
   facet_wrap(.~variable, scales = "free_y", dir = "v", switch = "y") +
-  geom_smooth(method = lm, lwd = 1, col = "black") +
+  geom_smooth(method = lm, lwd = 1, col = "black") 
   theme_minimal()
 dev.off()
 
 
+# calculate precip during 2019 drought ####
+p19 <- all %>%
+  filter(as.numeric(substr(datetime, 1, 4)) == 2019, 
+         as.numeric(substr(datetime, 6, 7)) %in% 9:10) %>%
+  slice(c(6:37)) %>%
+  select(datetime, precip_mmd = precipitation_amount) %>%
+  mutate(pre_cum = cumsum(precip_mmd))
+plot(p19$datetime, p19$pre_cum, type = "l")
+p19

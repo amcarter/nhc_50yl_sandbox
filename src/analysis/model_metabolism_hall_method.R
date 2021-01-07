@@ -10,7 +10,7 @@ source("../src/streamMetabolizer/inspect_model_fits.r")
 
 kq_hall <- read_csv("siteData/KQ_hall_prior_from_equation_daily.csv")
 flow_dates <- read_csv("rating_curves/flow_dates_filter.csv")
-
+met_68 = read_csv('C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/data/hall/hall_table_15.csv')
 # Metabolism functions ####
 # calculate hall met given k2 and a day of data spaced at dt min intervals
 fit_metab_hall <- function(day, k2, dt = 15, plot = TRUE){
@@ -91,7 +91,7 @@ fit_metab_hall <- function(day, k2, dt = 15, plot = TRUE){
           density = 20, angle = -45,
           col = alpha("sienna", 1))
   # points(day$hour, day$dodt_pred, pch = 19, col = 5)
-  legend("topright",
+  legend("topright", cex = .5,
          legend = c("dDO/dt uncorrected", "dDO/dt corrected", 
                     "sunrise/set",
                     "GPP", "ER"), 
@@ -105,10 +105,13 @@ fit_metab_hall <- function(day, k2, dt = 15, plot = TRUE){
          bty = "n")
   }
   
+  K600 = K600fromO2(mean(day$temp.water, na.rm = T),
+                    mean(day$k_gm3hr*24, na.rm = T))
   m <- data.frame(date = d,
                   gpp_gO2m3d = abs(polyarea(a_gpp$hour, a_gpp$dodt_cor)),
                   er_gO2m3d = abs(polyarea(a_er$hour, a_er$dodt_cor)),
-                  K2_day = k2)
+                  K2_day = k2,
+                  K600 = K600)
   
   
   return(m)
@@ -130,6 +133,7 @@ fit_ts_metab_hall<- function(dat, kq_hall, s, plot = FALSE, dt = 15){
              site == s)
     k2 <- kq$k2[1]
     
+    # m <- fit_metab_hall(day, k2, plot = T, dt = 60)
     m <- fit_metab_hall(day, k2, plot = plot, dt = dt)
     met <- bind_rows(met, m)
   }
@@ -154,7 +158,6 @@ K600fromO2 <- function(temp, KO2) {
 }
 filter_hall_met <- function(met, flow_dates){
   preds <- met %>%
-    mutate(K600 = K600fromO2(temp.water, K2_day)) %>%
     select(date, discharge, depth, temp.water,
            GPP = gpp_gO2m2d, ER = er_gO2m2d, K600) %>%
     left_join(flow_dates[,c(1,4)]) %>%
@@ -207,8 +210,8 @@ filter_hall_met <- function(met, flow_dates){
               sump,
               cum))
 }
-get_met_year<- function(dat, kq_hall, s, flow_dates, year){  
-  met <- fit_ts_metab_hall(dat, kq_hall, s)
+get_met_year<- function(dat, kq_hall, s, flow_dates, year, dt = 15){  
+  met <- fit_ts_metab_hall(dat, kq_hall, s, dt = dt)
   # plot(met$date, met$gpp_gO2m2d, type = "l", col = "forestgreen",
   #      ylim = range(c(met$gpp_gO2m2d, -met$er_gO2m2d), na.rm = T))
   # lines(met$date, -met$er_gO2m2d, col = "sienna")
@@ -245,9 +248,19 @@ preds_all <- data.frame()
 met_summary <- data.frame()
 preds_filled_all <- data.frame()
 for(s in sites){
-
+ 
   dat <- read_csv(paste0(filestring, s, ".csv"), guess_max = 10000) %>%
     mutate(DateTime_EST = with_tz(DateTime_UTC, tz = "EST"))
+  
+  # run on 60 min intervals
+  dat <- dat %>%
+    filter(substr(DateTime_EST, 15, 19) == "00:00")
+  
+  # run on smoothed data
+  # dat <- dat %>%
+  #   select(DateTime_EST, DO.obs, discharge, temp.water, DO.sat, depth, light) %>%
+  #   mutate(across(c(-DateTime_EST, -light), ~ 
+  #                   stats::filter(., rep(1/3, 3), sides = 2)))
   # seq <- seq(1, nrow(dat), by = 4)
   # dat <- dat[seq,]
   if(s %in% c("NHC", "UNHC")){
@@ -257,17 +270,104 @@ for(s in sites){
         filter(DateTime_EST >= yy, 
                DateTime_EST <= yy + 24*60*60*366)
       year = y
-      out <- get_met_year(dat1, kq_hall, s, flow_dates, year) 
+      out <- get_met_year(dat1, kq_hall, s, flow_dates, year, dt = 60) 
       preds_all <- bind_rows(preds_all, out[[1]])
       met_summary <- bind_rows(met_summary, out[[2]])
       preds_filled_all <- bind_rows(preds_filled_all, out[[3]])
     }
     next
   }
+  if(s == "WBP"){
+    dat <- dat %>% filter(DateTime_EST <= ymd_hms("2020-03-20 00:00:00", 
+                          tz = "EST"))
+  }
+  
   year = 2019
   
-  out <- get_met_year(dat, kq_hall, s, flow_dates, year) 
+  out <- get_met_year(dat, kq_hall, s, flow_dates, year, dt = 60) 
   preds_all <- bind_rows(preds_all, out[[1]])
   met_summary <- bind_rows(met_summary, out[[2]])
   preds_filled_all <- bind_rows(preds_filled_all, out[[3]])
 }
+
+summary(preds_all)
+saveRDS(list(preds = preds_all, 
+             summary = met_summary, 
+             cumulative = preds_filled_all),
+        "metabolism/hall/hall_met_60min.rds")
+
+
+
+# inspect Metabolism ####
+met_15 <- readRDS("metabolism/hall/hall_met_15min.rds")
+met_60 <- readRDS("metabolism/hall/hall_met_60min.rds")
+met_sm <- readRDS("metabolism/hall/hall_met_15min_smoothed.rds")
+met_ray <- readRDS("metabolism/compiled/raymond_met.rds")
+
+write_csv(bind_rows(met_ray$summary, met_60$summary),
+          "metabolism/compiled/metabolism_summary_tables_v2.csv")
+
+png("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/figures/met_estimate_method_comparison_kernels.png",
+  width = 4, height = 4, units = "in", res = 300)
+  plot_kde_metab(met_ray$preds, col = "steelblue", lim = 10)
+  par(new = T)
+  plot_kde_metab(met_60$preds, col = "brown3", lim = 10)
+  legend("topright",
+         c("Hall 1972 method", "Stream Metabolizer"),
+         fill = c("brown3", "steelblue"),
+         border = NA, bty = 'n')
+dev.off()
+
+met <- met_15$preds %>%
+  as_tibble() %>%
+  select(date, site, discharge, depth, temp = temp.water,
+         gpp15 = GPP, er15 = ER) %>%
+  left_join(met_60$preds[,c(1,5,6,9)], by = c("date", "site")) %>%
+  rename(gpp60 = GPP, er60 = ER) %>%
+  left_join(met_sm$preds[,c(1,5,6,9)], by = c("date", "site")) %>% 
+  rename(gppsm = GPP, ersm = ER)
+png("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/figures/hall_metab_sample_frequency_comparison.png",
+    width = 5, height = 4, units = "in", res = 300)
+  par(mfrow = c(1,2))
+  plot(-met$er60, -met$er15, pch = 20, cex = .7, 
+       xlab = "60 min ER", ylab = "15 min ER")
+  points(-met$er60, -met$ersm, pch = 20, col = 5, cex = .7)
+  abline(0,1, col = 2)
+  plot(met$gpp60, met$gpp15, pch = 20, cex = .7, 
+       xlab = "60 min GPP", ylab = "15 min GPP")
+  points(met$gpp60, met$gppsm, pch = 20, col = 5, cex = .7)
+  abline(0,1, col = 2)
+  legend("topleft", 
+         c("raw", "smoothed"),
+         pch = 20, col = c(1,5), bty = "n")
+  par(new = T, mfrow = c(1,1))
+  mtext("Metabolism calculated as in Hall 1972", line = 1)
+dev.off()
+
+plot_kde_hall_metab(met_15$preds, lim = 8)
+par(new = T)
+plot_kde_metab(met_sm$preds, col = "steelblue", lim = 8)
+par(new = T)
+plot_kde_hall_metab(met_60$preds, lim = 10, site = "CBP")
+
+
+tmp <- met_68 %>%
+  mutate(pr = GPP_gO2m2d/ER_gO2m2d) %>%
+  arrange(pr)
+
+tmp <- met_60$preds %>%
+  mutate(pr = -GPP/ER) %>%
+  arrange(pr)
+
+summary(tmp)
+min(which(tmp$pr >= 1))/sum(!is.na(tmp$pr))
+median(tmp$GPP, na.rm = T)/median(tmp$ER, na.rm = T)
+median(tmp$GPP_gO2m2d, na.rm = T)/median(tmp$ER_gO2m2d, na.rm = T)
+median(met_60$preds$GPP, na.rm = T)/median(met_68$GPP_gO2m2d)
+median(met_60$preds$ER, na.rm = T)/median(met_68$ER_gO2m2d)
+
+w(tmp)
+tmp
+plot(tmp$GPP, -tmp$ER)
+abline(0,1, col = 2)
+plot(tmp$pr, ylim = c(0,2))

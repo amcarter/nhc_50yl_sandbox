@@ -114,16 +114,40 @@ delineate_watershed_from_point <- function(lat,
                 new_name_base <- rep(new_name_base, length(files_to_move))
             }
 
-            mapply(function(x, nm, ext) file.rename(from = paste(from_dir,
-                                                                 x,
-                                                                 sep = '/'),
-                                                    to = glue('{td}/{n}{ex}',
-                                                              td = to_dir,
-                                                              n = nm,
-                                                              ex = ext)),
-                   x = files_to_move,
-                   nm = new_name_base,
-                   ext = extensions)
+            tryCatch({
+
+                #try to move the files (may fail if they are on different partitions)
+                mapply(function(x, nm, ext) file.rename(from = paste(from_dir,
+                                                                     x,
+                                                                     sep = '/'),
+                                                        to = glue('{td}/{n}{ex}',
+                                                                  td = to_dir,
+                                                                  n = nm,
+                                                                  ex = ext)),
+                       x = files_to_move,
+                       nm = new_name_base,
+                       ext = extensions)
+
+            }, warning = function(w){
+
+                #if that fails, copy them and then delete them
+                mapply(function(x, nm, ext) file.copy(from = paste(from_dir,
+                                                                   x,
+                                                                   sep = '/'),
+                                                      to = glue('{td}/{n}{ex}',
+                                                                td = to_dir,
+                                                                n = nm,
+                                                                ex = ext),
+                                                      overwrite = TRUE),
+                       x = files_to_move,
+                       nm = new_name_base,
+                       ext = extensions)
+
+                lapply(paste(from_dir,
+                             files_to_move,
+                             sep = '/'),
+                       unlink)
+            })
         }
 
         return()
@@ -309,6 +333,12 @@ delineate_watershed_from_point <- function(lat,
             whitebox::wbt_breach_depressions(dem = dem_f,
                                              output = dem_f,
                                              flat_increment = 0.01)
+
+            whitebox::wbt_burn_streams_at_roads(dem = dem_f,
+                                                streams = streams_f,
+                                                roads = roads_f,
+                                                output = dem_f,
+                                                width = 50)
 
             whitebox::wbt_d8_pointer(dem = dem_f,
                                      output = d8_f)
@@ -1008,3 +1038,31 @@ if(rebuild_all){
 #     group_by(month = substr(datetime, 1, 7)) %>%
 #     summarize(precip_mm = sum(precip_mm, na.rm = TRUE)) %>%
 #     ungroup()
+
+# 9. delineate additional watersheds and calculate areas ####
+
+#must copy function parts from macrosheds for this to work on all watersheds.
+#but then, it will fail on bridges unless we work that out
+
+more_sites = readr::read_csv('data/NHCsite_metadata_forWatershedDelin.csv')
+more_sites = more_sites %>%
+    filter(! grepl('^USGS', sitecode)) %>%
+    mutate(ws_area_manual = NA_real_)
+
+deetslist = list()
+
+for(i in 1:nrow(more_sites)){
+
+    current_site = more_sites$sitecode[i]
+
+    deets <- delineate_watershed_from_point(lat = more_sites$latitude[i],
+                                            long = more_sites$longitude[i],
+                                            crs = EPSG,
+                                            write_dir = 'data/watershed_boundary/more_boundaries',
+                                            write_name = current_site)
+
+    more_sites[i, 'ws_area_manual'] = deets$watershed_area_ha / 100
+    deetslist[[i]] = deets
+}
+
+saveRDS('data/watershed_boundary/more_boundaries/deets.rds')

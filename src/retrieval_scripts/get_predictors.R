@@ -194,9 +194,12 @@ delineate_watershed_from_point <- function(lat,
         }
 
         if(lat <= 15 && lat >= -15){ #equatorial
-            PROJ4 = glue('+proj=laea +lon_0=', long)
+        '+proj=laea +lat_0=35.9795 +lon_0=-79.0018'
+            PROJ4 = glue('+proj=laea +lon_0=', long,
+                         ' +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs')
         } else { #temperate or polar
-            PROJ4 = glue('+proj=laea +lat_0=', lat, ' +lon_0=', long)
+            PROJ4 = glue('+proj=laea +lat_0=', lat, ' +lon_0=', long,
+                         ' +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs')
         }
 
         return(PROJ4)
@@ -334,11 +337,11 @@ delineate_watershed_from_point <- function(lat,
                                              output = dem_f,
                                              flat_increment = 0.01)
 
-            whitebox::wbt_burn_streams_at_roads(dem = dem_f,
-                                                streams = streams_f,
-                                                roads = roads_f,
-                                                output = dem_f,
-                                                width = 50)
+            # whitebox::wbt_burn_streams_at_roads(dem = dem_f,
+            #                                     streams = streams_f,
+            #                                     roads = roads_f,
+            #                                     output = dem_f)
+            #                                     # width = 30)
 
             whitebox::wbt_d8_pointer(dem = dem_f,
                                      output = d8_f)
@@ -439,6 +442,10 @@ delineate_watershed_from_point <- function(lat,
                                  dsn = wb_sf_f,
                                  delete_dsn = TRUE,
                                  quiet = TRUE)
+
+                    # zz = sf::st_read(wb_sf_f)
+                    dem_conditioned = sf::st_read(dem_f)
+                    mv(dem_conditioned) + mv(roads, color='gray') + mv(streams) + mv(wb_sf)
                 }
             }
 

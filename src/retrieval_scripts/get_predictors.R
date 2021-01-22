@@ -5,6 +5,11 @@ library(lubridate)
 # library(plyr)
 # library(sf)
 # library(MODISTools)
+library(nhdplusTools)
+library(sf)
+library(streamstats)
+library(glue)
+library(rgee)
 
 rebuild_all = FALSE
 
@@ -589,7 +594,8 @@ get_gee = function(gee_id,
                    band,
                    start,
                    end,
-                   res){
+                   res,
+                   wb){
 
     imgcol = get_gee_imgcol(gee_id = gee_id,
                             # band = band,
@@ -684,7 +690,8 @@ get_gee_chunk = function(gee_id,
                          start,
                          end,
                          res,
-                         chunk_size_yr){
+                         chunk_size_yr,
+                         wb){
 
     if(chunk_size_yr < 2) stop('chunk_size_yr must be at least 2')
 
@@ -708,7 +715,7 @@ get_gee_chunk = function(gee_id,
         # geechunk = try(get_gee(gee_id, band, start = starti, end = endi, res))
         # if('try-error' %in% class(geechunk){
         geechunk = tryCatch({
-            get_gee(gee_id, band, start = starti, end = endi, res)
+            get_gee(gee_id, band, start = starti, end = endi, res, wb = wb)
         }, error = function(e){
             try_err <<- TRUE
             print(paste(starti, 'to', endi, 'failed'))
@@ -721,7 +728,41 @@ get_gee_chunk = function(gee_id,
     return(geeout)
 }
 
-# 2. delineate the NHC watershed; load as shapefile ####
+comid_from_point = function(lat, long, CRS){
+    pt = sf::st_point(c(long, lat))
+    ptc = sf::st_sfc(pt, crs=CRS)
+    COMID = nhdplusTools::discover_nhdplus_id(ptc)
+    if(! length(COMID)) COMID = NA
+    return(COMID)
+}
+
+choose_projection <- function(lat = NULL,
+                              long = NULL,
+                              unprojected = FALSE){
+
+    if(unprojected){
+        PROJ4 <- glue('+proj=longlat +datum=WGS84 +no_defs ',
+                      '+ellps=WGS84 +towgs84=0,0,0')
+        return(PROJ4)
+    }
+
+    if(is.null(lat) || is.null(long)){
+        stop('If projecting, lat and long are required.')
+    }
+
+    abslat <- abs(lat)
+
+    if(abslat < 23){ #tropical
+        PROJ4 = glue('+proj=laea +lon_0=', long)
+    } else { #temperate or polar
+        PROJ4 = glue('+proj=laea +lat_0=', lat, ' +lon_0=', long)
+    }
+
+    return(PROJ4)
+}
+
+
+# 2. [obsolete] delineate the NHC watershed; load as shapefile (see section 10) ####
 
 if(rebuild_all){
     deets <- delineate_watershed_from_point(lat = sites$latitude,
@@ -860,63 +901,218 @@ for(p in nwalt_paths){
 
 #adapt section 5 code
 
-# 8. get GEE layers (rgee setup is a beast) ####
+# x. [incomplete] geoknife experimentation (looking for other datasets) ####
+
+if(rebuild_all){
+
+    stencil = simplegeom(as(wb, 'Spatial'))
+    # fabric = webdata(list(times = as.POSIXct(c('1970-01-01', '2019-12-31')),
+    #                       url = 'https://cida.usgs.gov/thredds/dodsC/prism',
+    #                       variables = 'ppt'))
+    # fabric = webdata('nldas')#daymet”, “stageiv”, “topowx”, “solar”, “metobs
+    fabric = webdata('prism') # good
+    fabric = webdata('nldas') #gone?
+    fabric = webdata('iclus')
+    fabric = webdata('daymet') #?
+    fabric = webdata('stageiv') #?
+    fabric = webdata('solar') #just solar radiation
+    fabric = webdata('metobs') #ocean stuff?
+    query(fabric, 'variables')
+
+    fabric = webdata('iclus',
+                     times = as.POSIXct(c('1970-01-01', '2019-12-31')))
+
+    job = geoknife(stencil, fabric, wait = FALSE)
+    running(job)
+    successful(job)
+    error(job)
+    job = cancel(job)
+
+    x = result(job)
+    # write_csv(precip, 'data/prism/prism_raw.csv')
+}
+
+# precip = read_csv('data/prism/prism_raw.csv') %>%
+#     as_tibble() %>%
+#     dplyr::select(datetime = DateTime, precip_mm = '1') %>%
+#     group_by(month = substr(datetime, 1, 7)) %>%
+#     summarize(precip_mm = sum(precip_mm, na.rm = TRUE)) %>%
+#     ungroup()
+
+# 8. [incomplete] delineate additional watersheds and calculate areas ####
+
+#must copy function parts from macrosheds for this to work on all watersheds.
+#but then, it will fail on bridges unless we work that out
+
+more_sites = readr::read_csv('data/NHCsite_metadata_forWatershedDelin.csv')
+more_sites = more_sites %>%
+    filter(! grepl('^USGS', sitecode)) %>%
+    mutate(ws_area_manual = NA_real_)
+
+deetslist = list()
+
+for(i in 1:nrow(more_sites)){
+
+    current_site = more_sites$sitecode[i]
+
+    deets <- delineate_watershed_from_point(lat = more_sites$latitude[i],
+                                            long = more_sites$longitude[i],
+                                            crs = EPSG,
+                                            write_dir = 'data/watershed_boundary/more_boundaries',
+                                            write_name = current_site)
+
+    more_sites[i, 'ws_area_manual'] = deets$watershed_area_ha / 100
+    deetslist[[i]] = deets
+}
+
+saveRDS('data/watershed_boundary/more_boundaries/deets.rds')
+
+# 9. get full watershed boundary from NHD; isolate riparian zone of study area ####
+
+more_sites = readr::read_csv('data/NHCsite_metadata_forWatershedDelin.csv')
+nhc_mouth = more_sites %>%
+    filter(sitecode == 'NHC') %>%
+    st_as_sf(coords = c('longitude', 'latitude'),
+             remove = FALSE,
+             crs = 4326)
+
+if(rebuild_all){
+
+    comid = comid_from_point(lat = nhc_mouth$latitude,
+                             long = nhc_mouth$longitude,
+                             CRS = 4326)
+
+    nhc_lines = nhdplusTools::navigate_nldi(
+        nldi_feature = list(featureSource = 'comid',
+                            featureID = as.character(comid)),
+        mode = 'UT',
+        data_source = '',
+        distance_km = 100
+    )
+
+    nhc_wb = streamstats::delineateWatershed(
+        xlocation = nhc_mouth$longitude,
+        ylocation = nhc_mouth$latitude,
+        crs = 4326,
+        includeparameters = 'true'
+        # includeflowtypes = TRUE
+    )
+
+    #still broken...
+    # streamstats::writeShapefile(watershed = nhc_wb,
+    #                             layer = 'nhc_wb_streamstats',
+    #                             dir = 'data/watershed_boundary',
+    #                             what = 'boundary')
+
+    #save streamstats watershed boundary as shapefile
+    #streamstats::toSp and streamstats::writeShapefile are broken;
+    #the bodies of those functions are extracted and modified below:
+    tpf = tempfile(fileext='.geojson')
+    streamstats::writeGeoJSON(nhc_wb, file=tpf, what='boundary')
+    spatialdf = rgdal::readOGR(tpf)
+    unlink(tpf)
+    rgdal::writeOGR(spatialdf,
+                    dsn = 'data/watershed_boundary/',
+                    layer = 'nhc_wb_streamstats',
+                    driver = 'ESRI Shapefile')
+
+    dir.create('data/other_watershed_stuff',
+               showWarnings = FALSE)
+
+    #read back in as sf
+    nhc_wb = st_read('data/watershed_boundary/nhc_wb_streamstats.shp')
+
+    #plot all just to make sure it's legit
+    # nhc_points = st_as_sf(more_sites, coords = c(x = 'longitude', y = 'latitude'))
+    # mv(nhc_wb) + mv(nhc_lines) + mv(nhc_points)
+
+    #isolate sampled reach; combine and buffer to represent riparian area
+    proj = choose_projection(lat = nhc_mouth$latitude,
+                             long = nhc_mouth$longitude)
+
+    nhc_ripar = filter(nhc_lines,
+                       nhdplus_comid %in% c(8895490, 8895362, 8895420, 8895440)) %>%
+        st_combine() %>%
+        st_transform(crs = proj) %>%
+        st_buffer(dist = 250) %>%
+        st_transform(crs = 4326)
+
+    st_write(nhc_ripar,
+             dsn = 'data/other_watershed_stuff',
+             layer = 'riparian',
+             driver = 'ESRI shapefile',
+             # driver = 'GeoJSON')
+             delete_layer = TRUE)
+}
+
+nhc_wb = st_read('data/watershed_boundary/nhc_wb_streamstats.shp')
+nhc_ripar = st_read('data/other_watershed_stuff/riparian.shp')
+
+# 10. get GEE layers (rgee setup is a beast) ####
 
 #annual NPP
 Gnpp = get_gee(gee_id = 'UMT/NTSG/v2/LANDSAT/NPP',
                band = 'annualNPP',
                start = '1968-01-01',
                end = '2020-12-31',
-               res = 30)
+               res = 30,
+               wb = nhc_wb)
 
 #GPP
 Ggpp = get_gee(gee_id = 'UMT/NTSG/v2/LANDSAT/GPP',
                band = 'GPP',
                start = '1968-01-01',
                end = '2020-12-31',
-               res = 30)
+               res = 30,
+               wb = nhc_wb)
 
 #LAI
 Glai = get_gee(gee_id = 'MODIS/006/MOD15A2H',
                band = 'Lai_500m',
                start = '1968-01-01',
                end = '2020-12-31',
-               res = 500)
+               res = 500,
+               wb = nhc_wb)
 
 #FPAR
-Gfpar = get_gee(gee_id = 'MODIS/006/MOD15A2H',
-                band = 'Fpar_500m',
-                start = '1968-01-01',
-                end = '2020-12-31',
-                res = 500)
+# Gfpar = get_gee(gee_id = 'MODIS/006/MOD15A2H',
+#                 band = 'Fpar_500m',
+#                 start = '1968-01-01',
+#                 end = '2020-12-31',
+#                 res = 500,
+#                 wb = nhc_wb)
 
 #landcover (MODIS) [NEEDS WORK]
-Gtyp1 = get_gee(gee_id = 'MODIS/006/MCD12Q1',
-                band = 'LC_Type1',
-                start = '1968-01-01',
-                end = '2020-12-31',
-                res = 500)
+# Gtyp1 = get_gee(gee_id = 'MODIS/006/MCD12Q1',
+#                 band = 'LC_Type1',
+#                 start = '1968-01-01',
+#                 end = '2020-12-31',
+#                 res = 500,
+#                 wb = nhc_wb)
 
 #tree cover (MODIS)
 Gtree = get_gee(gee_id = 'MODIS/006/MOD44B',
                 band = 'Percent_Tree_Cover',
                 start = '1968-01-01',
                 end = '2020-12-31',
-                res = 250)
+                res = 250,
+                wb = nhc_wb)
 
 #non-tree veg cover (MODIS)
 Gveg = get_gee(gee_id = 'MODIS/006/MOD44B',
                band = 'Percent_NonTree_Vegetation',
                start = '1968-01-01',
                end = '2020-12-31',
-               res = 250)
+               res = 250,
+               wb = nhc_wb)
 
 #vegless cover (MODIS)
 Gbare = get_gee(gee_id = 'MODIS/006/MOD44B',
                 band = 'Percent_NonVegetated',
                 start = '1968-01-01',
                 end = '2020-12-31',
-                res = 250)
+                res = 250,
+                wb = nhc_wb)
 
 #precip (PRISM)
 Gppt = get_gee_chunk(gee_id = 'OREGONSTATE/PRISM/AN81d',
@@ -924,7 +1120,8 @@ Gppt = get_gee_chunk(gee_id = 'OREGONSTATE/PRISM/AN81d',
                      start = '1968-01-01',
                      end = '2020-12-31',
                      res = 4000,
-                     chunk_size_yr = 2)
+                     chunk_size_yr = 2,
+                     wb = nhc_wb)
 write_csv(Gppt, '~/git/papers/alice_nhc/data/gee/ppt.csv')
 
 #mean temp (PRISM)
@@ -933,7 +1130,8 @@ Gtmean = get_gee_chunk(gee_id = 'OREGONSTATE/PRISM/AN81d',
                      start = '1968-01-01',
                      end = '2020-12-31',
                      res = 4000,
-                     chunk_size_yr = 2)
+                     chunk_size_yr = 2,
+                     wb = nhc_wb)
 write_csv(Gtmean, '~/git/papers/alice_nhc/data/gee/tmean.csv')
 
 #max temp (PRISM)
@@ -942,7 +1140,8 @@ Gtmax = get_gee_chunk(gee_id = 'OREGONSTATE/PRISM/AN81d',
                      start = '1968-01-01',
                      end = '2020-12-31',
                      res = 4000,
-                     chunk_size_yr = 2)
+                     chunk_size_yr = 2,
+                     wb = nhc_wb)
 write_csv(Gtmax, '~/git/papers/alice_nhc/data/gee/tmax.csv')
 
 #min temp (PRISM)
@@ -951,7 +1150,8 @@ Gtmin = get_gee_chunk(gee_id = 'OREGONSTATE/PRISM/AN81d',
                      start = '1968-01-01',
                      end = '2020-12-31',
                      res = 4000,
-                     chunk_size_yr = 2)
+                     chunk_size_yr = 2,
+                     wb = nhc_wb)
 write_csv(Gtmin, '~/git/papers/alice_nhc/data/gee/tmin.csv')
 
 
@@ -1007,69 +1207,3 @@ write_csv(Gfpar, '~/git/papers/alice_nhc/data/gee/fpar.csv')
 write_csv(Glai, '~/git/papers/alice_nhc/data/gee/lai.csv')
 write_csv(Ggpp, '~/git/papers/alice_nhc/data/gee/gpp.csv')
 write_csv(Gnpp, '~/git/papers/alice_nhc/data/gee/npp.csv')
-
-# x. geoknife experimentation (looking for other datasets) ####
-
-if(rebuild_all){
-
-    stencil = simplegeom(as(wb, 'Spatial'))
-    # fabric = webdata(list(times = as.POSIXct(c('1970-01-01', '2019-12-31')),
-    #                       url = 'https://cida.usgs.gov/thredds/dodsC/prism',
-    #                       variables = 'ppt'))
-    # fabric = webdata('nldas')#daymet”, “stageiv”, “topowx”, “solar”, “metobs
-    fabric = webdata('prism') # good
-    fabric = webdata('nldas') #gone?
-    fabric = webdata('iclus')
-    fabric = webdata('daymet') #?
-    fabric = webdata('stageiv') #?
-    fabric = webdata('solar') #just solar radiation
-    fabric = webdata('metobs') #ocean stuff?
-    query(fabric, 'variables')
-
-    fabric = webdata('iclus',
-                     times = as.POSIXct(c('1970-01-01', '2019-12-31')))
-
-    job = geoknife(stencil, fabric, wait = FALSE)
-    running(job)
-    successful(job)
-    error(job)
-    job = cancel(job)
-
-    x = result(job)
-    # write_csv(precip, 'data/prism/prism_raw.csv')
-}
-
-# precip = read_csv('data/prism/prism_raw.csv') %>%
-#     as_tibble() %>%
-#     dplyr::select(datetime = DateTime, precip_mm = '1') %>%
-#     group_by(month = substr(datetime, 1, 7)) %>%
-#     summarize(precip_mm = sum(precip_mm, na.rm = TRUE)) %>%
-#     ungroup()
-
-# 9. delineate additional watersheds and calculate areas ####
-
-#must copy function parts from macrosheds for this to work on all watersheds.
-#but then, it will fail on bridges unless we work that out
-
-more_sites = readr::read_csv('data/NHCsite_metadata_forWatershedDelin.csv')
-more_sites = more_sites %>%
-    filter(! grepl('^USGS', sitecode)) %>%
-    mutate(ws_area_manual = NA_real_)
-
-deetslist = list()
-
-for(i in 1:nrow(more_sites)){
-
-    current_site = more_sites$sitecode[i]
-
-    deets <- delineate_watershed_from_point(lat = more_sites$latitude[i],
-                                            long = more_sites$longitude[i],
-                                            crs = EPSG,
-                                            write_dir = 'data/watershed_boundary/more_boundaries',
-                                            write_name = current_site)
-
-    more_sites[i, 'ws_area_manual'] = deets$watershed_area_ha / 100
-    deetslist[[i]] = deets
-}
-
-saveRDS('data/watershed_boundary/more_boundaries/deets.rds')

@@ -11,6 +11,10 @@ library(streamstats)
 library(glue)
 library(rgee)
 
+#only for section 10
+# rgee::ee_Initialize(email = 'email here',
+#                     drive = TRUE)
+
 rebuild_all = FALSE
 
 # 1. setup and helper functions ####
@@ -598,7 +602,7 @@ get_gee = function(gee_id,
                    wb){
 
     imgcol = get_gee_imgcol(gee_id = gee_id,
-                            # band = band,
+                            band = band,
                             start = start,
                             end = end)
 
@@ -863,7 +867,9 @@ if(rebuild_all){
 }
 
 
-# 6. [pending] get NWALT land cover 1974-2012 (from Arc layers) ####
+# 6. [impossible in R] get NWALT land cover 1974-2012 (from Arc layers) ####
+
+#the layer takes about 58GB RAM to load (srsly), and then fails with several errors.
 
 library(rgdal)
 
@@ -874,6 +880,7 @@ dir.create(dest,
            showWarnings = FALSE,
            recursive = TRUE)
 
+# nwalt_paths->p
 for(p in nwalt_paths){
     path_components = strsplit(p, '/')[[1]]
     fn = path_components[length(path_components)]
@@ -892,7 +899,7 @@ for(p in nwalt_paths){
     x = new("GDALReadOnlyDataset", 'data/nwalt/raw/nwalt_landuse_1974/lu1974_050815/')
     getDriver(x)
     getDriverLongName(getDriver(x))
-    xx = asSGDF_GROD(x) #boinks here
+    xx = asSGDF_GROD(x)#, offset=c(10000, 10000))
     r = raster::raster(xx)
     plot(r)
 }
@@ -969,14 +976,16 @@ saveRDS('data/watershed_boundary/more_boundaries/deets.rds')
 
 # 9. get full watershed boundary from NHD; isolate riparian zone of study area ####
 
-more_sites = readr::read_csv('data/NHCsite_metadata_forWatershedDelin.csv')
-nhc_mouth = more_sites %>%
-    filter(sitecode == 'NHC') %>%
-    st_as_sf(coords = c('longitude', 'latitude'),
-             remove = FALSE,
-             crs = 4326)
 
 if(rebuild_all){
+
+    more_sites = readr::read_csv('data/NHCsite_metadata_forWatershedDelin.csv')
+
+    nhc_mouth = more_sites %>%
+        filter(sitecode == 'NHC') %>%
+        st_as_sf(coords = c('longitude', 'latitude'),
+                 remove = FALSE,
+                 crs = 4326)
 
     comid = comid_from_point(lat = nhc_mouth$latitude,
                              long = nhc_mouth$longitude,
@@ -1048,7 +1057,7 @@ if(rebuild_all){
 nhc_wb = st_read('data/watershed_boundary/nhc_wb_streamstats.shp')
 nhc_ripar = st_read('data/other_watershed_stuff/riparian.shp')
 
-# 10. get GEE layers (rgee setup is a beast) ####
+# 10. summarize GEE layers for the whole watershed ####
 
 #annual NPP
 Gnpp = get_gee(gee_id = 'UMT/NTSG/v2/LANDSAT/NPP',
@@ -1057,6 +1066,7 @@ Gnpp = get_gee(gee_id = 'UMT/NTSG/v2/LANDSAT/NPP',
                end = '2020-12-31',
                res = 30,
                wb = nhc_wb)
+write_csv(Gnpp, '~/git/papers/alice_nhc/data/gee/npp.csv')
 
 #GPP
 Ggpp = get_gee(gee_id = 'UMT/NTSG/v2/LANDSAT/GPP',
@@ -1065,6 +1075,7 @@ Ggpp = get_gee(gee_id = 'UMT/NTSG/v2/LANDSAT/GPP',
                end = '2020-12-31',
                res = 30,
                wb = nhc_wb)
+write_csv(Ggpp, '~/git/papers/alice_nhc/data/gee/gpp.csv')
 
 #LAI
 Glai = get_gee(gee_id = 'MODIS/006/MOD15A2H',
@@ -1073,6 +1084,7 @@ Glai = get_gee(gee_id = 'MODIS/006/MOD15A2H',
                end = '2020-12-31',
                res = 500,
                wb = nhc_wb)
+write_csv(Glai, '~/git/papers/alice_nhc/data/gee/lai.csv')
 
 #FPAR
 # Gfpar = get_gee(gee_id = 'MODIS/006/MOD15A2H',
@@ -1081,6 +1093,7 @@ Glai = get_gee(gee_id = 'MODIS/006/MOD15A2H',
 #                 end = '2020-12-31',
 #                 res = 500,
 #                 wb = nhc_wb)
+# write_csv(Gfpar, '~/git/papers/alice_nhc/data/gee/fpar.csv')
 
 #landcover (MODIS) [NEEDS WORK]
 # Gtyp1 = get_gee(gee_id = 'MODIS/006/MCD12Q1',
@@ -1091,28 +1104,31 @@ Glai = get_gee(gee_id = 'MODIS/006/MOD15A2H',
 #                 wb = nhc_wb)
 
 #tree cover (MODIS)
-Gtree = get_gee(gee_id = 'MODIS/006/MOD44B',
-                band = 'Percent_Tree_Cover',
-                start = '1968-01-01',
-                end = '2020-12-31',
-                res = 250,
-                wb = nhc_wb)
+# Gtree = get_gee(gee_id = 'MODIS/006/MOD44B',
+#                 band = 'Percent_Tree_Cover',
+#                 start = '1968-01-01',
+#                 end = '2020-12-31',
+#                 res = 250,
+#                 wb = nhc_wb)
+# write_csv(Gtree, '~/git/papers/alice_nhc/data/gee/treed.csv')
 
-#non-tree veg cover (MODIS)
-Gveg = get_gee(gee_id = 'MODIS/006/MOD44B',
-               band = 'Percent_NonTree_Vegetation',
-               start = '1968-01-01',
-               end = '2020-12-31',
-               res = 250,
-               wb = nhc_wb)
+# #non-tree veg cover (MODIS)
+# Gveg = get_gee(gee_id = 'MODIS/006/MOD44B',
+#                band = 'Percent_NonTree_Vegetation',
+#                start = '1968-01-01',
+#                end = '2020-12-31',
+#                res = 250,
+#                wb = nhc_wb)
+# write_csv(Gveg, '~/git/papers/alice_nhc/data/gee/nontree_veg.csv')
 
-#vegless cover (MODIS)
-Gbare = get_gee(gee_id = 'MODIS/006/MOD44B',
-                band = 'Percent_NonVegetated',
-                start = '1968-01-01',
-                end = '2020-12-31',
-                res = 250,
-                wb = nhc_wb)
+# #vegless cover (MODIS)
+# Gbare = get_gee(gee_id = 'MODIS/006/MOD44B',
+#                 band = 'Percent_NonVegetated',
+#                 start = '1968-01-01',
+#                 end = '2020-12-31',
+#                 res = 250,
+#                 wb = nhc_wb)
+# write_csv(Gbare, '~/git/papers/alice_nhc/data/gee/vegless.csv')
 
 #precip (PRISM)
 Gppt = get_gee_chunk(gee_id = 'OREGONSTATE/PRISM/AN81d',
@@ -1154,6 +1170,36 @@ Gtmin = get_gee_chunk(gee_id = 'OREGONSTATE/PRISM/AN81d',
                      wb = nhc_wb)
 write_csv(Gtmin, '~/git/papers/alice_nhc/data/gee/tmin.csv')
 
+# 11. summarize GEE layers just for the riparian zone ####
+
+#annual NPP
+Gnpp_ripar = get_gee(gee_id = 'UMT/NTSG/v2/LANDSAT/NPP',
+               band = 'annualNPP',
+               start = '1968-01-01',
+               end = '2020-12-31',
+               res = 30,
+               wb = nhc_ripar)
+write_csv(Gnpp_ripar, '~/git/papers/alice_nhc/data/gee/npp_riparian.csv')
+
+#GPP
+Ggpp_ripar = get_gee(gee_id = 'UMT/NTSG/v2/LANDSAT/GPP',
+               band = 'GPP',
+               start = '1968-01-01',
+               end = '2020-12-31',
+               res = 30,
+               wb = nhc_ripar)
+write_csv(Ggpp_ripar, '~/git/papers/alice_nhc/data/gee/gpp_riparian.csv')
+
+#LAI
+Glai_ripar = get_gee(gee_id = 'MODIS/006/MOD15A2H',
+               band = 'Lai_500m',
+               start = '1968-01-01',
+               end = '2020-12-31',
+               res = 500,
+               wb = nhc_ripar)
+write_csv(Glai_ripar, '~/git/papers/alice_nhc/data/gee/lai_riparian.csv')
+
+# x. [testing] messing with GEE. trying to get nlcd ####
 
 zz = ee$FeatureCollection('USGS/NLCD')
 subset = zz$filterBounds(wb)
@@ -1200,10 +1246,3 @@ mapview::mapview(lcv)
 #                  end = '2020-12-31',
 #                  res = 30)
 
-write_csv(Gbare, '~/git/papers/alice_nhc/data/gee/vegless.csv')
-write_csv(Gveg, '~/git/papers/alice_nhc/data/gee/nontree_veg.csv')
-write_csv(Gtree, '~/git/papers/alice_nhc/data/gee/treed.csv')
-write_csv(Gfpar, '~/git/papers/alice_nhc/data/gee/fpar.csv')
-write_csv(Glai, '~/git/papers/alice_nhc/data/gee/lai.csv')
-write_csv(Ggpp, '~/git/papers/alice_nhc/data/gee/gpp.csv')
-write_csv(Gnpp, '~/git/papers/alice_nhc/data/gee/npp.csv')

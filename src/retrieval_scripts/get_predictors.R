@@ -1,3 +1,4 @@
+library(raster)
 library(geoknife)
 library(prism)
 library(tidyverse)
@@ -1199,195 +1200,57 @@ Glai_ripar = get_gee(gee_id = 'MODIS/006/MOD15A2H',
                wb = nhc_ripar)
 write_csv(Glai_ripar, '~/git/papers/alice_nhc/data/gee/lai_riparian.csv')
 
-# x. [testing] messing with GEE. trying to get nlcd ####
 
-zz = ee$FeatureCollection('USGS/NLCD')
-subset = zz$filterBounds(wb)
-rgee$
-ee_as_sf(
-    # filterDate(start, end)$
-
-gee_imgcol = ee$ImageCollection(gee_id)$
-    filterDate(start, end)$
-    select(band)$
-    map(function(x){
-        date <- ee$Date(x$get("system:time_start"))$format('YYYY_MM_dd')
-        x$set("RGEE_NAME", date)
-    })
-
-wb_ee = sf_as_ee(wb)
-# wb_ee$geometry()
-
-lcv <- ee$FeatureCollection('USGS/NLCD')$select('landcover')$
-    filterBounds(wb_ee) %>%
-    ee_as_sf()
-
-lcv <- ee$ImageCollection('USGS/NLCD')$select('landcover')$
-    filter(ee$Filter$eq('system:index', 'NLCD2011'))$first() %>%
-    ee$Image$clip(wb_ee) %>%
-    ee_as_raster(maxPixels = 20000000000)
-# imp <- ee$ImageCollection('USGS/NLCD')$select('impervious') %>%
-    ee_as_stars(maxPixels = 20000000000)
-lcvv = lcv %>%
-    sf::st_as_sf()
-mapview::mapview(lcv)
-# #impervious surface (NLCD)
-# Gimperv = get_gee(gee_id = 'USGS/NLCD',
-                  # band = 'impervious',
-                  # start = '1968-01-01',
-                  # end = '2020-12-31',
-                  # res = 30)
-
-
-#
-# #tree cover (NLCD)
-# Gtree2 = get_gee(gee_id = 'USGS/NLCD',
-#                  band = '24',
-#                  # band = 'landcover',
-#                  # band = 'percent_tree_cover',
-#                  start = '1968-01-01',
-#                  end = '2020-12-31',
-#                  res = 30)
-
-# take 2 ####
-
-# wdpa<-ee$FeatureCollection("WCMC/WDPA/current/points")
-# columns<-wdpa$first()$getInfo()
-# names(columns$properties)
-
-# library(geojsonsf)
-
-# nhc_wb_geojson = geojsonsf::sf_geojson(nhc_wb)
-wb_ee = sf_as_ee(nhc_wb)
-
-donkey = ee$ImageCollection('USGS/NLCD')
-chili = donkey$first()$getInfo()
-names(chili$properties)
-
-gee_imgcol = ee$ImageCollection('USGS/NLCD')$
-    # filterDate(start, end)$
-    select('landcover')$
-    filterBounds(wb_ee)$
-    # filterDate('1968-01-01', '2020-12-31')$
-    ee_print()
-    # select(subset)$
-    map(function(x){
-        date <- ee$Date(x$get("system:time_start"))$format('YYYY_MM_dd')
-        x$set("RGEE_NAME", date)
-    })
-
-point <- ee$Geometry$Point(-44.366,-18.145)
-start <- ee$Date("2019-07-11")
-end <- ee$Date("2019-07-20")
-col.filt<-col$filterBounds(point)$filterDate(start,end)
-
-col<-ee$ImageCollection('LANDSAT/LT05/C01/T2')$
-    filterDate('1987-01-01','1990-05-01')$
-    filterBounds(ee$Geometry$Point(25.8544,-18.08874))
-filtered <- col$filterMetadata('IMAGE_QUALITY','equals',9)
-notSoGood<-ee$Algorithms$Landsat$simpleComposite(col,75,3)
-good<-ee$Algorithms$Landsat$simpleComposite(filtered,75,3)
-Map$setCenter(25.8544,-18.08874,13)
-Map$addLayer(notSoGood, list(bands=c('B3','B2','B1'), gain=3.5), 'Bad Composition')
-Map$addLayer(good,list(bands=c('B3', 'B2', 'B1'), gain=3.5),'Good Composition')
-
-Gout$Gmed = ee_extract(x = imgcol,
-                       y = wb,
-                       scale = res,
-                       fun = ee$Reducer$median(),
-                       # sf = FALSE)
-                       sf = T)
-
-#take 3####
-
-wb_ee = sf_as_ee(nhc_wb)
-img = ee$ImageCollection('USGS/NLCD')$select('landcover')$
-    filter(ee$Filter$eq('system:index', 'NLCD2011'))$first()$clip(wb_ee)
-dir.create('data/nlcd', showWarnings = FALSE)
-rst = ee_as_raster(image = img,
-                   region = wb_ee$geometry(),
-                   dsn = 'data/nlcd/NLCD2011.tif')
-
-
-ftr = ee$FeatureCollection('USGS/NLCD')$select('landcover')$
-    filterBounds(wb_ee)
-    filter(ee$Filter$eq('system:index', 'NLCD2011'))$first()
-
-Map$centerObject(wb_ee)
-Map$addLayer(eeObject = ee$FeatureCollection(wb_ee)) +
-Map$addLayer(
-    eeObject = wb_ee,
-    visParams = list(palette = 'yellow'),
-    name = 'ROI'
-)
-
-Map$centerObject(clipped)
-Map$addLayer(
-    eeObject = clipped,
-    visParams = list(palette = 'red'),
-    name = 'clipped') +
-Map$addLayer(
-    eeObject = ftr,
-    name = 'Census roads'
-)
-
-    ee_as_raster()
-    # ee_as_raster(maxPixels = 20000000000)
-    # ee_as_sf()
-    # ee_as_stars(maxPixels = 20000000000)
-    # sf::st_as_sf()
-clipped <- ftr$map(function(x) x$intersection(wb_ee))
-mapview::mapview(rst)
-
-# fc <- ee$FeatureCollection('TIGER/2016/Roads')$filterBounds(roi)
-# clipped <- fc$map(function(x) x$intersection(roi))
-
-
-# vPar <- list(bands = c('landcover'))#,min = 100,max = 8000)
-# Map$setCenter(-44.366,-17.69, zoom = 10)
-# Map$addLayer(img, vPar, "True Color Image")
-
-# zz = img %>%
-#     rgee::ee_extract(y = nhc_wb,
-#                      scale = 30,
-#                      fun = ,
-#                      sf = TRUE)
-# rgee::ee_as_sf()
-
-Map$centerObject(wb_ee)
-Map$addLayer(
-    eeObject = img,
-    visParams = list(bands = c('landcover'), min = 0, max = 95),
-    name = 'nlcd'
-)
-
-Map$addLayer(
-    eeObject = wb_ee,
-    name = 'NHC'
-)
-
-# Get a dictionary of means in the region.  Keys are bandnames.
-nlcd_sums <- img$reduceRegion(
-    reducer = ee$Reducer$sum(),
-    geometry = wb_ee,
-    scale = 30
-)
-
-print(nlcd_sums$getInfo())
-
-
-#for reals ####
+# 12. get NLCD 1992-2016 from GEE; summarize ####
 
 dir.create('data/nlcd', showWarnings = FALSE)
 
 wb_ee = sf_as_ee(nhc_wb)
 
-img = ee$ImageCollection('USGS/NLCD')$select('landcover')$
-    filter(ee$Filter$eq('system:index', 'NLCD2011'))$first()$clip(wb_ee)
+nlcd_epochs = c(1992, 2001, 2004, 2006, 2008, 2011, 2013, 2016)
 
-rst = ee_as_raster(image = img,
-                   region = wb_ee$geometry(),
-                   dsn = 'data/nlcd/NLCD2011.tif')
+if(rebuild_all){
+    for(e in nlcd_epochs){
 
-values(rst)
-nlcd2011 = raster::raster('data/nlcd/NLCD2011.tif')
+        subset_id = paste0('NLCD', as.character(e))
+
+        img = ee$ImageCollection('USGS/NLCD')$
+            select('landcover')$
+            filter(ee$Filter$eq('system:index', subset_id))$
+            first()$
+            clip(wb_ee)
+
+        ee_as_raster(image = img,
+                     region = wb_ee$geometry(),
+                     dsn = paste0('data/nlcd/', subset_id, '.tif'))
+    }
+}
+
+color_key = read.csv('data/nlcd/pixel_color_key.csv',
+                     header = FALSE)
+nlcd_summary = color_key %>%
+    as_tibble() %>%
+    select(1, 3) %>%
+    rename(id = V1,
+           category = V3) %>%
+    mutate(category = str_match(string = category,
+                                pattern = '^(.+?):.*$')[, 2],
+           id = as.character(id))
+
+for(e in nlcd_epochs){
+
+    subset_id = paste0('NLCD', as.character(e))
+
+    epoch_rst = raster::raster(paste0('data/nlcd/', subset_id, '.tif'))
+    tabulated_values = raster::values(epoch_rst) %>%
+        table() %>%
+        as_tibble() %>%
+        rename(id = '.',
+               !!sym(paste0('CellTally', as.character(e))) := 'n')
+
+    nlcd_summary = full_join(nlcd_summary,
+              tabulated_values,
+              by = 'id')
+}
+
+write_csv(nlcd_summary, 'data/nlcd/nlcd_1992-2016_summary.csv')

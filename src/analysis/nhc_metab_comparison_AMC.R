@@ -1,5 +1,5 @@
-#################################
-# Metabolism comparison NHC SP data and Hall data
+############################
+# Metabolism comparison NHC SP data and Hall data #####
 
 #questions:
 #combine data from historic sites? NHC UNHC %in% Concrete, Blackwood, Wood Bridge?
@@ -9,8 +9,9 @@ library(StreamPULSE)
 library(viridis)
 library(ggplot2)
 library(beanplot)
-library(dplyr)
 library(scales)
+library(tidyverse)
+library(lubridate)
 
 setwd('C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/code')
 
@@ -28,73 +29,58 @@ nhc_68_70 = nhc_68_70 %>%
     summarize_if(is.numeric, mean, na.rm=TRUE) %>%
     as.data.frame()
 
+
+# should the high value from the storm be included?
+nhc_68_70 <- nhc_68_70 %>% 
+    mutate(GPP_gO2m2d = ifelse(GPP_gO2m2d > 6, NA, GPP_gO2m2d),
+           ER_gO2m2d = ifelse(ER_gO2m2d > 10, NA, ER_gO2m2d))
+
+nhc_68 <- nhc_68_70 %>%
+    filter(date < nhc_68_70$date[1] + 365)
+nhc_69 <- nhc_68_70 %>%
+    filter(date < nhc_68_70$date[1] + 2*365,
+           date >= nhc_68_70$date[1] + 365)
 #subset historic data by site and year
 gpp_concrete = nhc_68_70$GPP_gO2m2d[nhc_68_70$site == 'Concrete']
 gpp_blackwood = nhc_68_70$GPP_gO2m2d[nhc_68_70$site == 'Blackwood']
 gpp_wb = nhc_68_70$GPP_gO2m2d[nhc_68_70$site == 'Wood Bridge']
 
 gpp_68_70 = nhc_68_70$GPP_gO2m2d
-gpp_68 = nhc_68_70$GPP_gO2m2d[substr(nhc_68_70$date, 1, 4) == '1968']
-gpp_69 = nhc_68_70$GPP_gO2m2d[substr(nhc_68_70$date, 1, 4) == '1969']
-gpp_70 = nhc_68_70$GPP_gO2m2d[substr(nhc_68_70$date, 1, 4) == '1970']
+gpp_68 = nhc_68$GPP_gO2m2d
+gpp_69 = nhc_69$GPP_gO2m2d
+# gpp_68 = nhc_68_70$GPP_gO2m2d[substr(nhc_68_70$date, 1, 4) == '1968']
+# gpp_69 = nhc_68_70$GPP_gO2m2d[substr(nhc_68_70$date, 1, 4) == '1969']
+# gpp_70 = nhc_68_70$GPP_gO2m2d[substr(nhc_68_70$date, 1, 4) == '1970']
 
 er_68_70 = nhc_68_70$ER_gO2m2d
-er_68 = nhc_68_70$ER_gO2m2d[substr(nhc_68_70$date, 1, 4) == '1968']
-er_69 = nhc_68_70$ER_gO2m2d[substr(nhc_68_70$date, 1, 4) == '1969']
-er_70 = nhc_68_70$ER_gO2m2d[substr(nhc_68_70$date, 1, 4) == '1970']
+er_68 = nhc_68$ER_gO2m2d
+er_69 = nhc_69$ER_gO2m2d
+# er_68 = nhc_68_70$ER_gO2m2d[substr(nhc_68_70$date, 1, 4) == '1968']
+# er_69 = nhc_68_70$ER_gO2m2d[substr(nhc_68_70$date, 1, 4) == '1969']
+# er_70 = nhc_68_70$ER_gO2m2d[substr(nhc_68_70$date, 1, 4) == '1970']
 
 nep_68_70 = gpp_68_70 - er_68_70
 nep_68 = gpp_68 - er_68
 nep_69 = gpp_69 - er_69
-nep_70 = gpp_70 - er_70
+# nep_70 = gpp_70 - er_70
 
 #retrieve contemporary data by year; get K and O2 data for later
-# query_available_results('NC', 'NHC')
-# nhc_17 = request_results(sitecode='NC_NHC', '2017')
-# nhc_18 = request_results(sitecode='NC_NHC', '2018')
-# nhc_new_K = nhc_17$model_results$data %>%
-#     select(date, DO.mod, DO.sat, temp.water, depth) %>%
-#     # bind_rows(nhc_18$model_results$data[,c('date','DO.obs','DO.sat')]) %>%
-#     bind_rows(select(nhc_18$model_results$data, date, DO.mod, DO.sat,
-#         temp.water, depth)) %>%
-#     # group_by(date) %>%
-#     # summarize_all(mean) %>%
-#     # left_join(nhc_17$model_results$fit$daily[,c('date','K600_daily_mean')]) %>%
-#     left_join(select(bind_rows(nhc_17$model_results$fit$daily,
-#         nhc_18$model_results$fit$daily), date, K600_daily_mean)) %>%
-#     as.data.frame()
 
-nhc_new <- read_csv("data/NHC_metab_allsites_fixedHallK.csv") %>%
-    mutate(GPP = ifelse(GPP > -5, GPP, NA), 
-           ER = ifelse(ER > -20, ER, NA),
-           year = year(date))
-
-# if(filter_high_Q){
-# 
-#     #highest considered depth in Hall dissertation: 0.65m
-#     #corresponding Q, based on modern Z-Q curve:
-#     d17 = nhc_17$model_results$data
-#     dd17 = nhc_17$model_results$data_daily
-#     Q_cutoff = max(na.omit(d17$discharge[d17$depth > 0.64 & d17$depth < 0.65]))
-#     Q_cutoff = max(na.omit(d17$discharge[d17$depth > 0.84 & d17$depth < 0.85]))
-#     Qbool = dd17$discharge.daily < Q_cutoff
-#     Qbool[is.na(Qbool)] = FALSE
-#     dd17 = dd17[Qbool,]
-#     pred17 = nhc_17$predictions[,c('date','GPP','ER')]
-#     nhc_17 = inner_join(pred17, dd17[,c('date', 'discharge.daily')], by='date')
-# 
-#     d18 = nhc_18$model_results$data
-#     dd18 = nhc_18$model_results$data_daily
-#     # Q_cutoff = max(na.omit(d18$discharge[d18$depth > 0.64 & d18$depth < 0.65]))
-#     Qbool = dd18$discharge.daily < Q_cutoff
-#     Qbool[is.na(Qbool)] = FALSE
-#     dd18 = dd18[Qbool,]
-#     pred18 = nhc_18$predictions[,c('date','GPP','ER')]
-#     nhc_18 = inner_join(pred18, dd18[,c('date', 'discharge.daily')], by='date')
-# } else {
-#     nhc_17 = as.data.frame(nhc_17$predictions[,c('date','GPP','ER')])
-#     nhc_18 = as.data.frame(nhc_18$predictions[,c('date','GPP','ER')])
-# }
+# nhc_new <- read_csv("data/NHC_metab_allsites_fixedHallK_v2.csv") %>%
+#     mutate(GPP = ifelse(GPP > -5, GPP, NA), 
+#            ER = ifelse(ER > -20, ER, NA),
+#            K600 = ifelse(K600 <= 0, NA, K600),
+#            year = year(date))
+nhc_new <- read_rds("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/metabolism/hall/hall_met_60min.rds")$preds
+if(filter_high_Q){
+    dc <- 0.65 # depth cutoff from Hall
+    #highest considered depth in Hall dissertation: 0.65m
+    #corresponding Q, based on modern Z-Q curve:
+    Q_cutoff = max(na.omit(nhc_new$discharge[nhc_new$depth > dc - 0.01 & nhc_new$depth < dc]))
+    Qbool = nhc_new$discharge < Q_cutoff
+    Qbool[is.na(Qbool)] = FALSE
+    nhc_new = nhc_new[Qbool,]
+}
 
 gpp_new = nhc_new$GPP
 gpp_17 = nhc_new$GPP[nhc_new$year == 2017]
@@ -118,6 +104,7 @@ plot(gpp_new, type='l')
 acf(gpp_new, na.action=na.pass)
 pacf(gpp_new, na.action=na.pass)
 #strong autocorrelation and partial autocorr;
+
 #will have to model error as an autoregressive process
 #not stationary; can't use pure AR
 qqnorm(gpp_new); abline(1, 1, col='red', lty=2)
@@ -125,56 +112,56 @@ qqnorm(gpp_new); abline(1, 1, col='red', lty=2)
 
 #nhc_17 is irregular, so can't use arima; only option would be GAM
 
-gpp_70 <- gpp_70[gpp_70 < 6] 
-er_70 <- er_70[er_70 < 10] 
 #distribution plots ####
 png(width=9, height=6, units='in', type='cairo', res=300,
-    filename='../figures/metab_distributions.png')
+    filename='../figures/metab_distributions_v2.png')
 
 defpar = par(mfrow=c(2,3))
 
 #plot GPP dists, then and now
-plot(density(gpp_68_70, na.rm=TRUE), xlim=c(-3, 10), bty='l', col='sienna3',
-    main='GPP 1968-70 vs. 2017-19', xlab='GPP', ylim=c(0,1.2))
+plot(density(gpp_68_70, na.rm=TRUE), xlim=c(0, 3.5), bty='l', col='sienna3',
+     main='GPP 1968-70 vs. 2017-19', xlab='GPP', ylim=c(0,1.4))
 lines(density(gpp_new, na.rm=TRUE), col='blue')
 legend('topright', 
-       legend=c('68-70; n=79', 
+       legend=c('68-70; n=76', 
                 paste0('17-19; n=', length(which(!is.na(gpp_new))))),
        col = c('sienna3','blue'), lty = 1, bty = 'n',
        seg.len = 1, cex = 0.9, lwd = 2)
 
 #plot ER dists, then and now
-plot(density(er_68_70 * -1, na.rm=TRUE), xlim=c(-15, 1), bty='l', col='sienna3',
-    main='ER 1968-70 vs. 2017-19', xlab='ER', ylim=c(0,0.7))
+plot(density(er_68_70 * -1, na.rm=TRUE), xlim=c(-3.5, 0), bty='l', col='sienna3',
+     main='ER 1968-70 vs. 2017-19', xlab='ER', ylim=c(0,0.9))
 lines(density(er_new, na.rm=TRUE), col='blue')
 legend('topleft', 
-       legend=c('68-70; n=79', 
+       legend=c('68-70; n=76', 
                 paste0('17-19; n=', length(which(!is.na(er_new))))),
        col = c('sienna3','blue'), 
        lty = 1, bty = 'n', seg.len = 1, cex = 0.9, lwd = 2)
 
 #plot NEP dists, then and now
 plot(density(nep_68_70, na.rm=TRUE), xlim=c(-15, 2), bty='l', col='sienna3',
-    main='NEP 1968-70 vs. 2017-19', xlab='NEP', ylim=c(0,1.0))
+    main='NEP 1968-70 vs. 2017-19', xlab='NEP', ylim=c(0,1.3))
 lines(density(nep_new, na.rm=TRUE), col='blue')
 legend('topleft', 
-       legend=c('68-70; n=79', 
+       legend=c('68-70; n=76', 
                 paste0('17-19; n=', length(which(!is.na(nep_new))))),
        col = c('sienna3','blue'), 
        lty = 1, bty = 'n', seg.len = 1, cex = 0.9, lwd = 2)
 
 #plot GPP dists by year
-cols = viridis(6)
+# cols = viridis(6)
 cols = c(rep('sienna3', 3), rep('blue', 3))
 plot(density(gpp_68, na.rm=TRUE), xlim=c(-1, 9), bty='l', col=cols[1],
-    main='GPP by year', xlab='GPP', ylim=c(0,1.3))
+    main='GPP by year', xlab='GPP', ylim=c(0,1.4))
 lines(density(gpp_69, na.rm=TRUE), col=cols[2])
-lines(density(gpp_70, na.rm=TRUE), col=cols[3])
+# lines(density(gpp_70, na.rm=TRUE), col=cols[3])
 lines(density(gpp_17, na.rm=TRUE), col=cols[4])
 lines(density(gpp_18, na.rm=TRUE), col=cols[5])
 lines(density(gpp_19, na.rm=TRUE), col=cols[6])
 legend('topright',
-    legend=c('68; n=18', '69; n=49', '70; n=12', 
+    legend=c(paste0('68; n=', length(gpp_68)),
+             paste0('69; n=', length(gpp_69)),
+             # paste0('70; n=', length(gpp_70)), 
              paste0('17; n=', length(which(!is.na(gpp_17)))),
              paste0('18; n=', length(which(!is.na(gpp_18)))),
              paste0('19; n=', length(which(!is.na(gpp_19))))),
@@ -183,14 +170,16 @@ legend('topright',
 
 #plot ER dists by year
 plot(density(er_68 * -1, na.rm=TRUE), xlim=c(-9, 1), bty='l', col=cols[1],
-    main='ER by year', xlab='ER', ylim=c(0,0.8))
+    main='ER by year', xlab='ER', ylim=c(0,0.9))
 lines(density(er_69 * -1, na.rm=TRUE), col=cols[2])
-lines(density(er_70 * -1, na.rm=TRUE), col=cols[3])
+# lines(density(er_70 * -1, na.rm=TRUE), col=cols[3])
 lines(density(er_17, na.rm=TRUE), col=cols[4])
 lines(density(er_18, na.rm=TRUE), col=cols[5])
 lines(density(er_19, na.rm=TRUE), col=cols[6])
 legend('topleft',
-    legend=c('68; n=18', '69; n=49', '70; n=12', 
+    legend=c(paste0('68; n=', length(gpp_68)),
+             paste0('69; n=', length(gpp_69)),
+             # paste0('70; n=', length(gpp_70)), 
              paste0('17; n=', length(which(!is.na(er_17)))),
              paste0('18; n=', length(which(!is.na(er_18)))),
              paste0('19; n=', length(which(!is.na(er_19))))), 
@@ -199,24 +188,24 @@ legend('topleft',
 
 #plot NEP dists by year
 plot(density(nep_68, na.rm=TRUE), xlim=c(-8, 2), bty='l', col=cols[1],
-    main='NEP by year', xlab='NEP', ylim=c(0,1.1))
+    main='NEP by year', xlab='NEP', ylim=c(0,1.3))
 lines(density(nep_69, na.rm=TRUE), col=cols[2])
-lines(density(nep_70, na.rm=TRUE), col=cols[3])
+# lines(density(nep_70, na.rm=TRUE), col=cols[3])
 lines(density(nep_17, na.rm=TRUE), col=cols[4])
 lines(density(nep_18, na.rm=TRUE), col=cols[5])
 lines(density(nep_19, na.rm=TRUE), col=cols[6])
 legend('topleft',
-    legend = c('68; n=18', '69; n=49', '70; n=12', 
+    legend = c(paste0('68; n=', length(gpp_68)),
+               paste0('69; n=', length(gpp_69)),
+               # paste0('70; n=', length(gpp_70)), 
                paste0('17; n=', length(which(!is.na(nep_17)))),
                paste0('18; n=', length(which(!is.na(nep_18)))),
                paste0('19; n=', length(which(!is.na(nep_19))))),
     col=cols, lty=1, bty='n', seg.len=1, cex=0.9, lwd=2)
 
 dev.off()
-               68']
-gpp_69 = nhc_68_70$GPP_gO2m2d[substr(nhc_68_70$date, 1, 4) == '1969']
-gpp_70 = nhc_68_70$GPP_gO2m2d[substr(nhc_68_70$date, 1, 4) == '1970']
-lines(density(gpp_new, na.rm=TRUE), col=cols[4])
+               
+
 #plot temporal coverage for historic data ####
 
 historic_dates = nhc_68_70$date[! is.na(nhc_68_70$GPP_gO2m2d)]
@@ -246,9 +235,9 @@ substr(wb_year_agg, 1, 4) = '1970'
 wb_year_agg = as.Date(wb_year_agg)
 wb_num = as.numeric(wb_year_agg)
 
-# plot(historic_dates, rep(1, length(historic_dates), type='n', xlab='day'),
-#     yaxt='n', ylab='', xlab='', main='Historic Coverage')
-# abline(v=historic_dates, lty=2, col='gray')
+plot(historic_dates, rep(1, length(historic_dates), type='n', xlab='day'),
+    yaxt='n', ylab='', xlab='', main='Historic Coverage')
+abline(v=historic_dates, lty=2, col='gray')
 
 png(width=7, height=6, units='in', type='cairo', res=300,
     filename='~/Dropbox/streampulse/figs/NHC_comparison/historic_coverage.png')
@@ -299,8 +288,8 @@ dev.off()
 #compare overall distributions then and now ####
 
 #first assess normality
-png(width=7, height=6, units='in', type='cairo', res=300,
-    filename='~/Dropbox/streampulse/figs/NHC_comparison/normality_assessment.png')
+# png(width=7, height=6, units='in', type='cairo', res=300,
+#     filename='~/Dropbox/streampulse/figs/NHC_comparison/normality_assessment.png')
 
 par(mfrow=c(2,2), mar=c(0, 0, 0, 0), oma=rep(4, 4))
 qqnorm(gpp_new, lty=2, xlab='', ylab='', main='', xaxt='n', yaxt='n', bty='o')
@@ -319,12 +308,12 @@ mtext('Theoretical Quantiles', 1, outer=TRUE, line=1.5)
 mtext('Sample Quantiles', 2, outer=TRUE, line=1.5)
 mtext('Normal Q-Q Plots (red line = 1:1)', 3, outer=TRUE, line=1.5)
 
-dev.off()
+# dev.off()
 
 #nonnormal, but CLT probably applies.
 #let's assess equality of variance with an F-test
 var.test(gpp_68_70, gpp_new) #not equal: p < 0.001
-var.test(er_68_70, er_new) #not equal: p < 0.001
+var.test(er_68_70, er_new) #not equal: p < 0.00001
 
 #unequal variance, so 2-sample t-test is out.
 #not i.i.d., so welch's t-test is out (could transform)
@@ -346,23 +335,24 @@ round(mean(gpp_68_70_mod, na.rm=TRUE), 7) ==
     round(mean(gpp_new_mod, na.rm=TRUE), 7)
 
 #get historic monthly data coverage to use for sample weights
+nhc_68_70 <- filter(nhc_68_70, !is.na(GPP_gO2m2d))
 month_counts_68_70 = tapply(rep(1, nrow(nhc_68_70)),
     substr(nhc_68_70$date, 6, 7), sum)
-month_proportions = month_counts_68_70 / sum(month_counts_68_70)
-
+month_proportions = month_counts_68_70 / nrow(nhc_68_70)
 #split gpp vector by month for each dataset
 #commented portions are for uniformly distributing monthly draw weights
-gpp_68_70_bymo = split(gpp_68_70_mod, factor(substr(nhc_68_70$date, 6, 7)))
+gpp_68_70_bymo <- split(gpp_68_70_mod[!is.na(gpp_68_70_mod)],
+                        factor(substr(nhc_68_70$date, 6, 7)))
 # gpp_68_70_bymo = split(gpp_68_70_mod,
 #     factor(rep(c('01','02','03','04','05','06','07','08','10','11','12'),
 #     length.out=length(gpp_68_70_mod))))
-gpp_new_bymo = split(gpp_new_mod, factor(substr(dates_new, 6, 7)))
+gpp_new_bymo = split(gpp_new_mod[!is.na(gpp_new_mod)],
+                     factor(substr(dates_new[!is.na(gpp_new_mod)], 6, 7)))
 # gpp_new_bymo = split(gpp_new_mod,
 #     factor(rep(c('01','02','03','04','05','06','07','08','10','11','12'),
 #     length.out=length(gpp_new_mod))))
-gpp_new_bymo = lapply(gpp_new_bymo, na.omit)
 nsamp_new = sum(sapply(gpp_new_bymo, length))
-nsamp_68_70 = length(gpp_68_70_mod)
+nsamp_68_70 = length(which(!is.na(gpp_68_70_mod)))
 
 
 #determine monthly sample sizes for modern dataset; deal with remainders
@@ -414,11 +404,12 @@ er_new_mod = er_new - mean(er_new, na.rm=TRUE) +
 mean(er_68_70_mod, na.rm=TRUE) == mean(er_new_mod, na.rm=TRUE)
 
 #split er vector by month for each dataset
-er_68_70_bymo = split(er_68_70_mod, factor(substr(nhc_68_70$date, 6, 7)))
+er_68_70_bymo = split(er_68_70_mod[!is.na(er_68_70_mod)],
+                      factor(substr(nhc_68_70$date, 6, 7)))
 er_new_bymo = split(er_new_mod, factor(substr(dates_new, 6, 7)))
 er_new_bymo = lapply(er_new_bymo, na.omit)
 nsamp_new = sum(sapply(er_new_bymo, length))
-nsamp_68_70 = length(er_68_70_mod)
+nsamp_68_70 = length(er_68_70_mod[!is.na(er_68_70_mod)])
 
 #determine monthly sample sizes for modern dataset; deal with remainders
 month_samp_new = month_proportions * nsamp_new
@@ -454,8 +445,8 @@ if(pval_er == 1){
 }
 #visualize GPP hypothesis test ####
 
-png(width=7, height=6, units='in', type='cairo', res=300,
-    filename='~/Dropbox/streampulse/figs/NHC_comparison/bootstrap_welch_t_weighted_filtered.png')
+# png(width=7, height=6, units='in', type='cairo', res=300,
+#     filename='~/Dropbox/streampulse/figs/NHC_comparison/bootstrap_welch_t_weighted_filtered.png')
 
 par(mfrow=c(2,1), mar=c(4,4,1,2), oma=c(0,0,3,0))
 
@@ -487,7 +478,7 @@ legend('topleft', legend=paste('\np =', round(pval_gpp, 3)), bty='n',
 
 #visualize ER hypothesis test ####
 
-plot(density(t_vect_er), xlim=c(-5, 25), xlab='t-value', main='')
+plot(density(t_vect_er), xlim=c(-5, 52), xlab='t-value', main='')
 qs = quantile(t_vect_er, probs=c(0.025, 0.975))
 dd = density(t_vect_er)
 ddo = order(dd$x)
@@ -509,20 +500,20 @@ legend('top', legend=paste('\np =', round(pval_er, 3)), bty='n',
 mtext("Observed Welch's t-values (red) relative to bootstrapped null dists", 3,
     outer=TRUE, line=1, font=2, cex=1.3)
 
-dev.off()
+# dev.off()
 
 #verify with Mann-Whitney-Wilcoxon Test? ####
 
 #visualize dists again with non-bootstrapped means ####
 
-png(width=7, height=6, units='in', type='cairo', res=300,
-    filename='~/Dropbox/streampulse/figs/NHC_comparison/means_raw_boxplot.png')
-
+# png(width=7, height=6, units='in', type='cairo', res=300,
+#     filename='~/Dropbox/streampulse/figs/NHC_comparison/means_raw_boxplot.png')
+par(mfrow = c(1,1))
 gppHmean = paste('mean =', round(mean(gpp_68_70, na.rm=TRUE), 2))
 gppCmean = paste('mean =', round(mean(gpp_new, na.rm=TRUE), 2))
 erHmean = paste('mean =', round(mean(er_68_70, na.rm=TRUE), 2) * -1)
 erCmean = paste('mean =', round(mean(er_new, na.rm=TRUE), 2))
-boxplot(gpp_68_70, gpp_new * -1, er_68_70, er_new,
+boxplot(gpp_68_70, gpp_new,  -1* er_68_70, er_new,
     ylab='', col='gray',
     names=c('GPP 1968-70', 'GPP 2017-19', 'ER 1968-70', 'ER 2017-19'))
 axis(1, at=1:4, labels=c(gppHmean, gppCmean, erHmean, erCmean),
@@ -531,9 +522,9 @@ mtext(expression(paste("gm"^"-2" * " d"^"-1")), 2, line=2)
 mtext('Another look at distributions, then and now (not bootstrapped)', 3,
     cex=1, font=2)
 
-dev.off()
+# dev.off()
 
-#bootstrap some confidence bounds (NEEDS TO BE WEIGHTED) ####
+#bootstrap some confidence bounds ####
 nsamp = 20000
 mean_vect_er_68_70 = mean_vect_er_17_19 = mean_vect_gpp_68_70 =
     mean_vect_gpp_17_19 = vector(length=nsamp)
@@ -548,6 +539,26 @@ for(i in 1:nsamp){
     mean_vect_gpp_17_19[i] = mean(samp_17_19_gpp, na.rm=TRUE)
 }
 
+# for cbp only
+cbp_68_70 <- nhc_68_70 %>%
+    filter(site == "Concrete")
+cbp_19 <- nhc_new %>%
+    filter(site == 'CBP')
+nsamp = 20000
+mean_vect_er_68_70 = mean_vect_er_17_19 = mean_vect_gpp_68_70 =
+    mean_vect_gpp_17_19 = vector(length=nsamp)
+for(i in 1:nsamp){
+    samp_68_70_er = sample(cbp_68_70$ER_gO2m2d, 
+                           size = nrow(cbp_68_70), replace=TRUE)
+    samp_17_19_er = sample(cbp_19$ER, size = nrow(cbp_19), replace=TRUE)
+    samp_68_70_gpp = sample(cbp_68_70$GPP_gO2m2d, 
+                            size = nrow(cbp_68_70), replace=TRUE)
+    samp_17_19_gpp = sample(cbp_19$GPP, size = nrow(cbp_19), replace=TRUE)
+    mean_vect_er_68_70[i] = mean(samp_68_70_er, na.rm=TRUE)
+    mean_vect_er_17_19[i] = mean(samp_17_19_er, na.rm=TRUE)
+    mean_vect_gpp_68_70[i] = mean(samp_68_70_gpp, na.rm=TRUE)
+    mean_vect_gpp_17_19[i] = mean(samp_17_19_gpp, na.rm=TRUE)
+}
 # plot(density(mean_vect_er_68_70 * -1))
 CI = data.frame('CI95_lower'=numeric(4), 'median'=numeric(4),
                 'CI95_upper'=numeric(4),
@@ -558,38 +569,110 @@ CI[3,] = -quantile(sort(mean_vect_er_68_70) * -1, probs=c(0.025, 0.5, 0.975))
 CI[4,] = -quantile(sort(mean_vect_er_17_19), probs=c(0.025, 0.5, 0.975))
 
 
-# weighted by month CI #this seems questionable, double check it
+# weighted by month CI
+gpp_68_70_bymo = split(gpp_68_70[!is.na(gpp_68_70)],
+                      factor(substr(nhc_68_70$date, 6, 7)))
+er_68_70_bymo = split(er_68_70[!is.na(er_68_70)],
+                      factor(substr(nhc_68_70$date, 6, 7)))
+gpp_new_bymo = split(gpp_new[!is.na(gpp_new)],
+                     factor(substr(dates_new[!is.na(gpp_new)], 6, 7)))
+er_new_bymo = split(er_new[!is.na(er_new)],
+                     factor(substr(dates_new[!is.na(er_new)], 6, 7)))
+nsamp_new = round(sum(sapply(er_new_bymo, length))/
+                      length(er_68_70[!is.na(er_68_70)]))
+
 nsamp = 20000
 mean_vect_er_68_70 = mean_vect_er_new = mean_vect_gpp_68_70 =
     mean_vect_gpp_new = c()
-samp_68_70_er = samp_new_er = 
-    samp_68_70_gpp = samp_new_gpp = c()
 for(i in 1:nsamp){
-    for(m in names(month_proportions)){
-        hsamp = round(79 * month_proportions[names(month_proportions)==m])    
-        newsamp = round(length(gpp_new) * 
-                              month_proportions[names(month_proportions)==m])    
+    samp_68_70_er = samp_new_er = 
+        samp_68_70_gpp = samp_new_gpp = c()
+    
+    for(m in names(month_counts_68_70)){
+
         t_er_68_70 <- er_68_70_bymo[[m]]
         t_gpp_68_70 <- gpp_68_70_bymo[[m]]
         t_er_new <- er_new_bymo[[m]]
         t_gpp_new <- gpp_new_bymo[[m]]
         
         samp_68_70_er = c(samp_68_70_er,
-                          sample(t_er_68_70, size=hsamp, replace=TRUE))
+                          sample(t_er_68_70, 
+                                 size = month_counts_68_70[m], 
+                                 replace=TRUE))
         samp_new_er = c(samp_new_er,
-                        sample(t_er_new, size=newsamp, replace=TRUE))
+                        sample(t_er_new, 
+                               size = nsamp_new * month_counts_68_70[m], 
+                               replace=TRUE))
         samp_68_70_gpp = c(samp_68_70_gpp, 
-                           sample(t_gpp_68_70, size=hsamp, replace=TRUE))
+                           sample(t_gpp_68_70, 
+                                  size = month_counts_68_70[m], 
+                                  replace=TRUE))
         samp_new_gpp = c(samp_new_gpp,
-                             sample(t_gpp_new, size=newsamp, replace=TRUE))
+                             sample(t_gpp_new, 
+                                    size = nsamp_new * month_counts_68_70[m], 
+                                    replace=TRUE))
         }
-    mean_vect_er_68_70[i] = mean(samp_68_70_er, na.rm=TRUE)
-    mean_vect_er_new[i] = mean(samp_new_er, na.rm=TRUE)
-    mean_vect_gpp_68_70[i] = mean(samp_68_70_gpp, na.rm=TRUE)
-    mean_vect_gpp_new[i] = mean(samp_new_gpp, na.rm=TRUE)
+    mean_vect_er_68_70[i] = mean(samp_68_70_er)
+    mean_vect_er_new[i] = mean(samp_new_er)
+    mean_vect_gpp_68_70[i] = mean(samp_68_70_gpp)
+    mean_vect_gpp_new[i] = mean(samp_new_gpp)
     if(i %% 1000 == 0){ print(i) }
 }
 
+#for Cbp only
+# weighted by month CI
+gpp_68_70_bymo = split(cbp_68_70$GPP_gO2m2d, 
+                       factor(substr(cbp_68_70$date, 6, 7)))
+er_68_70_bymo = split(cbp_68_70$ER_gO2m2d, 
+                      factor(substr(cbp_68_70$date, 6, 7)))
+gpp_new_bymo = split(cbp_19$GPP[!is.na(cbp_19$GPP)],
+                     factor(substr(cbp_19$date[!is.na(cbp_19$GPP)], 6, 7)))
+er_new_bymo = split(cbp_19$ER[!is.na(cbp_19$ER)],
+                    factor(substr(cbp_19$date[!is.na(cbp_19$ER)], 6, 7)))
+
+month_counts_68_70 = tapply(rep(1, nrow(cbp_68_70)),
+                            substr(cbp_68_70$date, 6, 7), sum)
+
+
+nsamp = 20000
+mean_vect_er_68_70 = mean_vect_er_new = mean_vect_gpp_68_70 =
+    mean_vect_gpp_new = c()
+for(i in 1:nsamp){
+    samp_68_70_er = samp_new_er = 
+        samp_68_70_gpp = samp_new_gpp = c()
+    
+    for(m in names(month_counts_68_70)){
+
+nsamp_new = round(sum(sapply(er_new_bymo, length))/
+                      nrow(cbp_68_70))
+        t_er_68_70 <- er_68_70_bymo[[m]]
+        t_gpp_68_70 <- gpp_68_70_bymo[[m]]
+        t_er_new <- er_new_bymo[[m]]
+        t_gpp_new <- gpp_new_bymo[[m]]
+        
+        samp_68_70_er = c(samp_68_70_er,
+                          sample(t_er_68_70, 
+                                 size = month_counts_68_70[m], 
+                                 replace=TRUE))
+        samp_new_er = c(samp_new_er,
+                        sample(t_er_new, 
+                               size = nsamp_new * month_counts_68_70[m], 
+                               replace=TRUE))
+        samp_68_70_gpp = c(samp_68_70_gpp, 
+                           sample(t_gpp_68_70, 
+                                  size = month_counts_68_70[m], 
+                                  replace=TRUE))
+        samp_new_gpp = c(samp_new_gpp,
+                             sample(t_gpp_new, 
+                                    size = nsamp_new * month_counts_68_70[m], 
+                                    replace=TRUE))
+        }
+    mean_vect_er_68_70[i] = mean(samp_68_70_er)
+    mean_vect_er_new[i] = mean(samp_new_er)
+    mean_vect_gpp_68_70[i] = mean(samp_68_70_gpp)
+    mean_vect_gpp_new[i] = mean(samp_new_gpp)
+    if(i %% 1000 == 0){ print(i) }
+}
 
  # plot(density(mean_vect_er_68_70 * -1))
 CI_prop = data.frame('CI95_lower'=numeric(4), 'median'=numeric(4),
@@ -597,17 +680,18 @@ CI_prop = data.frame('CI95_lower'=numeric(4), 'median'=numeric(4),
     row.names=c('GPP_then', 'GPP_now', 'ER_then', 'ER_now'))
 CI_prop[1,] = quantile(sort(mean_vect_gpp_68_70), probs=c(0.025, 0.5, 0.975))
 CI_prop[2,] = quantile(sort(mean_vect_gpp_new), probs=c(0.025, 0.5, 0.975))
-CI_prop[3,] = -quantile(sort(mean_vect_er_68_70), probs=c(0.025, 0.5, 0.975))
+CI_prop[3,] = quantile(sort(mean_vect_er_68_70), probs=c(0.025, 0.5, 0.975))
 CI_prop[4,] = -quantile(sort(mean_vect_er_new), probs=c(0.025, 0.5, 0.975))
-#write.csv(CI, '~/Dropbox/streampulse/figs/NHC_comparison/metab_CIs.csv')
+# write.csv(CI, '~/Dropbox/streampulse/figs/NHC_comparison/metab_CIs.csv')
 
 png(width=6, height=4, units='in', type='cairo', res=300,
-    filename='../figures/bootstrapped_metabolism_CI_comparison.png')
+filename='../figures/bootstrapped_metabolism_CI_comparison_CBP.png')
 
 
 par(mfrow = c(1,2))
 boxplot(t(CI), col = c(alpha("darkred",.75),"grey35" ),
-        ylab = "CI around mean (g O2/m2/d)",ylim = c(0,3.5), 
+        ylab = "CI around mean (g O2/m2/d)",
+        ylim = c(.5, 3), 
         xaxt = "n", xlab = "")
 axis(1, at=c(1.5, 3.5), labels=c("GPP", "ER"), line=0)
     #, col='transparent', tcl=0, font=2)
@@ -615,16 +699,19 @@ legend("topleft", bty = "n",
        c("1968-70 data", "2017-19 data"),
        fill = c(alpha("darkred",.75),"grey35" ))
 
-mtext("Unweighted")
+# mtext("Unweighted")
+mtext("All Sites")
 
 boxplot(t(CI_prop), col = c(alpha("darkred",.75),"grey35" ), 
-        ylab = "CI around mean (g O2/m2/d)", ylim = c(0,3.5),
+        ylab = "CI around mean (g O2/m2/d)", 
+        ylim = c(0.5, 3),
         xaxt = "n", xlab = "")
 axis(1, at=c(1.5, 3.5), labels=c("GPP", "ER"), line=0)
 # legend("topleft",cex=1.4, bty = "n",
 #        c("Hall metabolism", "2019 metabolism"),
 #        fill = c(alpha("darkred",.75),"grey35" ))
-mtext("Weighted by month")
+# mtext("Weighted by month")
+mtext("Concrete Bridge")
  
 dev.off()
 
@@ -648,17 +735,20 @@ SB = -86.04
 SC = 2.142
 SD = -0.0216
 SE = -0.5
-if(filter_high_Q){ #prob should do this anyway
-    nhc_new_K = nhc_new_K[nhc_new_K$date %in% dates_new,]
-}
-TT = nhc_new_K$temp.water
-nhc_new_K$K2 = nhc_new_K$K600_daily_mean *
+
+TT = nhc_new$temp.water
+nhc_new$K2 = nhc_new$K600 *
     ((SA + SB * TT + SC * TT ^ 2 + SD * TT ^ 3) / 600) ^ SE
 
-# #convert K2 to D
-# nhc_new_K$D = nhc_new_K$K2 * (nhc_new_K$DO.sat - nhc_new_K$DO.mod)
-# D_daily = tapply(nhc_new_K$D, nhc_new_K$date, mean, na.rm=TRUE)
-# # K2_daily = tapply(nhc_new_K$K2, nhc_new_K$date, mean, na.rm=TRUE)
+##Convert KO2 to K600
+K600fromO2<-function(temp, KO2) {
+    ((600/(1800.6-(120.1*temp)+(3.7818*temp^2)-(0.047608*temp^3)))^-0.5)*KO2
+}
+
+#convert K2 to D
+nhc_new$D = nhc_new$K2 * (nhc_new$DO.sat - nhc_new$DO_mgl)
+D_daily = tapply(nhc_new$D, nhc_new$date, mean, na.rm=TRUE)
+K2_daily = tapply(nhc_new$K2, nhc_new$date, mean, na.rm=TRUE)
 
 
 #calculate 100% saturation deficit expressed as g m-3 (same as mg/L)
@@ -669,13 +759,13 @@ nhc_new_K$K2 = nhc_new_K$K600_daily_mean *
 #moving on...
 
 #convert 15m K2 (sm parlance; would be k2 in hall parlance) to daily k (a la hall)
-nhc_new_K$k = nhc_new_K$K2 * 2.3 * nhc_new_K$DO.sat #eq 9 in hall
-k_daily = tapply(nhc_new_K$k, nhc_new_K$date, mean, na.rm=TRUE)
+nhc_new$k = nhc_new$K2 * 2.3 * nhc_new$DO.sat #eq 9 in hall
+k_daily = tapply(nhc_new$k, nhc_new$date, mean, na.rm=TRUE)
 
 #plot distributions of historic and modern k
 png(width=7, height=6, units='in', type='cairo', res=300,
-    filename='~/Dropbox/streampulse/figs/NHC_comparison/k_dists_filtered.png')
-
+    filename='../figures/k_dists_filtered_v2.png')
+par(mfrow = c(1,1))
 xlims = range(c(k_daily, nhc_68_70_k$k_daily), na.rm=TRUE)
 cur_dens = density(k_daily, na.rm=TRUE)
 hist_dens_diurnal = density(nhc_68_70_k$k_daily[nhc_68_70_k$method == 'diurnal'],
@@ -706,7 +796,7 @@ legend('topright', legend=c('then (diurnal); n=9', 'then (morphology); n=14',
 dev.off()
 
 #compare K by depth
-k_by_depth = tapply(nhc_new_K$k, round(nhc_new_K$depth, 3), mean, na.rm=TRUE)
+k_by_depth = tapply(nhc_new$k, round(nhc_new$depth, 3), mean, na.rm=TRUE)
 k_sub = k_by_depth[names(k_by_depth) %in% as.character(k_morphology$depth)]
 still_need = k_morphology$depth[! as.character(k_morphology$depth) %in% names(k_sub)]
 sort(unique(substr(names(k_by_depth), 1, 5)))

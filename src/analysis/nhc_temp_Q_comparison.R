@@ -8,6 +8,8 @@
 library(tidyverse)
 library(lubridate)
 library(zoo)
+library(ContDataQC)
+library(RHydro)
 
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl")
 
@@ -17,18 +19,13 @@ setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl")
 # nhc_mega <- StreamPULSE::request_data("NC_NHC", variables=c("WaterTemp_C", "DO_mgL"))
 # write_rds(nhc_mega, "data/NHC_watertemp.rds")
 
-nhc_mega <- read_rds("data/NHC_watertemp.rds")
-nhc_dat <- nhc_mega$data %>%
-  mutate(datetime = with_tz(DateTime_UTC, tzone="EST"),
-         date = as.Date(datetime)) %>%
-  filter(! flagtype %in% c("Bad Data", "Questionable")) %>%
-  pivot_wider(names_from = variable, values_from = value) %>%
-  select(date, datetime, water_temp_C = WaterTemp_C, DO_mgL) %>%
-  as_tibble() 
-  
-nhc_19 <- nhc_dat %>%
-  group_by(date) %>%
-  summarize(water_temp_C = mean(water_temp_C, na.rm=T)) %>%
+nhc_mega <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/metabolism/processed/NHC.csv", 
+                     guess_max = 10000)
+
+nhc_19 <- nhc_mega %>%
+  group_by(date = as.Date(with_tz(DateTime_UTC, tz = "EST"))) %>%
+  summarize(water_temp_C = mean(temp.water, na.rm=T),
+            discharge_m3s = mean(discharge, na.rm = T)) %>%
   ungroup() %>%
   mutate(doy = format(date, "%j")) 
 
@@ -36,51 +33,60 @@ nhc_19 <- nhc_dat %>%
 # this data was digitized from Hall dissertation figure 27
 # using WebPlotDigitizer from github
 
-nhc_69 <- read_csv("data/hall/hall_figure27_digitized_mean_daily_temp.csv")
-hall_dates <- data.frame(date = seq(nhc_69$date[1], nhc_69$date[nrow(nhc_69)], 
-                                    by = 1))
-hall_dates$doy <- format(hall_dates$date, "%j")
+nhc_69 <- read_csv("data/hall/hall_discharge_temp_daily.csv") %>%
+  mutate(doy = format(date, "%j"),
+         hall = "then") %>%
+  select(-stage_cm, -notes)
 
-nhc_69 <- left_join(hall_dates, nhc_69)
-nhc_69$water_temp_C <- na.approx(nhc_69$water_temp_C)
 
 mean_temps <- nhc_19 %>% 
-  group_by(doy) %>%
-  summarize(mean_temp_new = mean(water_temp_C, na.rm=T),
-            low_temp_new = min(water_temp_C, na.rm=T),
-            high_temp_new = max(water_temp_C, na.rm=T)) %>%
-  ungroup()
-
-mean_temps <- nhc_69 %>% 
-  group_by(doy) %>%
-  summarize(mean_temp_hall = mean(water_temp_C, na.rm=T),
-            low_temp_hall = min(water_temp_C, na.rm=T),
-            high_temp_hall = max(water_temp_C, na.rm=T)) %>%
+  mutate(hall = "now") %>%
+  bind_rows(nhc_69) %>%
+  group_by(doy, hall) %>%
+  summarize(across(-date, .fns = list(mean = ~mean(., na.rm = T),
+                                      min = ~min(., na.rm = T),
+                                      max = ~max(., na.rm = T),
+                                      sd = ~sd(., na.rm = T)),
+                   .names = "{col}_{fn}")) %>%
   ungroup() %>%
-  full_join(mean_temps, by="doy") %>%
   mutate(doy = as.numeric(doy))
 
-is.na(mean_temps) <- sapply(mean_temps, is.infinite)
+Q <- nhc_19 %>% 
+  mutate(hall = "now") %>%
+  bind_rows(nhc_69) %>%
+  mutate(year = year(date), 
+         doy = as.numeric(doy)) %>%
+  filter(year %in% c(1969, 2019)) %>%
+  left_join(mean_temps, by = c("hall", "doy")) %>%
+  select(doy, year, discharge_m3s, discharge_m3s_sd)  
+
 
 # Water Temp Plot ####
 
 png(width=7, height=4, units='in', type='cairo', res=300,
     filename='figures/daily_water_temp_comp.png')
 
-  plot(mean_temps$doy, na.approx(mean_temps$mean_temp_hall, na.rm = F),
+  plot(mean_temps$doy[mean_temps$hall == "then"], 
+       na.approx(mean_temps$water_temp_C_mean[mean_temps$hall == "then"], 
+                 na.rm = F),
        type = "l", lwd = 2, 
        col = "brown3", ylim = c(0,29),
        ylab = "Water Temp C", xlab = "Day of Year",
        main = "Mean Daily Water Temperatures")
   # points(mean_temps$doy, mean_temps$mean_temp_hall, pch = 20)
-  polygon(x = c(mean_temps$doy, rev(mean_temps$doy)),
-          y = na.approx(c(mean_temps$low_temp_hall,
-                          rev(mean_temps$high_temp_hall)),
+  polygon(x = c(mean_temps$doy[mean_temps$hall == "then"],
+                rev(mean_temps$doy[mean_temps$hall == "then"])),
+          y = na.approx(c(mean_temps$water_temp_C_min[mean_temps$hall == "then"],
+                          rev(mean_temps$water_temp_C_max[mean_temps$hall == "then"])),
                           na.rm = F),
           col = alpha("brown3", 0.5), border = NA)
-  lines(mean_temps$doy, mean_temps$mean_temp_new, lwd=2, col = "grey40")
-  polygon(x = c(mean_temps$doy, rev(mean_temps$doy)),
-          y = c(mean_temps$low_temp_new, rev(mean_temps$high_temp_new)),
+  lines(mean_temps$doy[mean_temps$hall == "now"], 
+        mean_temps$water_temp_C_mean[mean_temps$hall == "now"], 
+        lwd=2, col = "grey40")
+  polygon(x = c(mean_temps$doy[mean_temps$hall == "now"],
+                rev(mean_temps$doy[mean_temps$hall == "now"])),
+          y = c(mean_temps$water_temp_C_min[mean_temps$hall == "now"],
+                rev(mean_temps$water_temp_C_max[mean_temps$hall == "now"])),
           col = alpha("grey40", 0.5), border = NA)
   legend("topleft", c(paste0("2016-2020 temp (n = ", nrow(nhc_19), ")"),
                       paste0("1968-1970 temp (n = ", 
@@ -89,112 +95,187 @@ png(width=7, height=4, units='in', type='cairo', res=300,
 dev.off()
 
 
-# Discharge and Level ####
-# load Hall rating curve, calculate equation
 
-hall_rc <- read_csv("data/hall/hall_figure5_digitized_ratingcurve.csv")
-# Calculate discharge from rating curves
-# Q = a * L ^ b
+# Monthly summaries ####
+t19 <- nhc_19 %>%
+  mutate(month = format(date, "%b")) %>%
+  filter(date >= "2017-03-01",
+         date <= "2020-03-01") %>%
+  group_by(month) %>%
+  summarize(mean_temp = mean(water_temp_C, na.rm = T),
+            min_temp = min(water_temp_C, na.rm = T),
+            max_temp = max(water_temp_C, na.rm = T))
 
-m <- lm(log(hall_rc$discharge_m3s) ~ log(hall_rc$stage_cm))
-a <- summary(m)$coefficients[1]
-b <- summary(m)$coefficients[2]#Summary of the regression statistics
-plot(hall_rc$stage_cm, hall_rc$discharge_m3s)#, log = "y")
-lines(seq(10, 90, by = 1), exp(a + b * log(seq(10, 90, by = 1))))
-min(hall_rc$stage_cm)
+t19 <- nhc_69 %>%
+  mutate(month = format(date, "%b")) %>%
+  group_by(month) %>%
+  summarize(mean_temph = mean(water_temp_C, na.rm = T),
+            min_temph = min(water_temp_C, na.rm = T),           
+            max_temph = max(water_temp_C, na.rm = T))%>%
+  full_join(t19, by = "month") %>%
+  mutate(deltat = mean_temp - mean_temph)
 
-hall_1cms_stage <- exp((log(1) - a)/b)/100 
-
-# not good for stages above 80 cm
-hall_Q <- read_csv("data/hall/hall_figure26_digitized_dailystage.csv") %>%
-  mutate(discharge_m3s = exp(a + b * log(stage_cm)),
-         date = as.Date(date, format = "%m/%d/%Y")) %>%
-  arrange(date)
-
-hall_dates <- data.frame(date = seq(hall_Q$date[1], hall_Q$date[nrow(hall_Q)], 
-                                    by = 1))
-hall_dates$doy <- as.numeric(format(hall_dates$date, "%j"))
-
-hall_Q <- left_join(hall_dates, hall_Q)
-
-hall_Q$discharge_m3s <- na.approx(hall_Q$discharge_m3s)
-hall_Q$stage_m <- na.approx(hall_Q$stage_cm)/100
-# plot(hall_Q$date, hall_Q$discharge_m3s)
-# abline(h=3)
-
-hall_Qlim <- hall_Q %>% 
-  group_by(doy) %>%
-  summarize(low_discharge_m3s = min(discharge_m3s, na.rm=T),
-            high_discharge_m3s = max(discharge_m3s, na.rm = T), 
-            low_stage_m = min(stage_m, na.rm = T),
-            high_stage_m = max(stage_m, na.rm = T))
-
-hall_Q <- hall_Q %>%
-#  filter(year(date) == 1969) %>%
-  mutate(year = year(date)) %>%
-  left_join(hall_Qlim, by = "doy") %>%
-  select(-stage_cm) %>%
-  as_tibble()
-
-new_Q <- read_csv("../NHC_2019_metabolism/data/metabolism/processed/NHC.csv") %>%
-  mutate(datetime = force_tz(DateTime_EST, tzone = "EST"),
-         date = as.Date(datetime)) %>%
-  select(datetime, date, level_m, discharge) %>%
-  group_by(date) %>% 
-  summarize(discharge_m3s = mean(discharge, na.rm=T),
-            stage_m = mean(level_m, na.rm = T)) %>%
-  mutate(doy = as.numeric(format(date, "%j")),
-         discharge_m3s = ifelse(discharge_m3s < 1e-4, 
-                            NA, discharge_m3s))
-
+maxh <- 25.42298
+nhc_19 %>%
+  mutate(month = format(date, "%b"),
+         above = ifelse(water_temp_C >= maxh, T, F)) %>%
+  filter(date >= "2017-03-01",
+         date <= "2020-03-01") %>%
+  group_by(month) %>%
+  summarize(high = sum(above, na.rm = T),
+            all = sum(!is.na(above)))
   
-m <- lm(log(new_Q$discharge_m3s) ~ log(new_Q$stage_m))
-a_n <- summary(m)$coefficients[1]
-b_n <- summary(m)$coefficients[2]#Summary of the regression statistics
-plot(new_Q$stage_m, new_Q$discharge_m3s, ylim = c(0,10))
-lines(seq(0.5, 1.50, by = .1), exp(a_n + b_n * log(seq(.5, 1.5, by = .1))))
+# Discharge plot ####
 
-# find what flow is at NHC when flow at CBP is 1 m3s
-# qq <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/siteData/interpolatedQ_allsites.csv") %>%
-#   filter(CBP.Q <=3)
-# plot(qq$CBP.Q, qq$NHC.Q)
-# abline(0,1, col = 2, lty = 2, lwd = 1)
-# qm <- lm(qq$NHC.Q ~ qq$CBP.Q)
-# qs = summary(qm)$coefficients[2]
-# abline(0,qs, col = 3, lty = 2, lwd = 2)
+plot(Q$doy[Q$year == 2019], Q$discharge_m3s[Q$year == 2019],
+     col = "grey40", lwd = 2, type = "l", ylab = "Discharge (m3s)",
+     xlab = "Day of Year", log = "y") 
+lines(Q$doy[Q$year == 1969], Q$discharge_m3s[Q$year == 1969],
+     col = "brown3", lwd = 2) 
 
-qs <- 1.06683
+# RBI calculations ####
 
-new_1cms_stage <- exp((log(qs) - a_n)/b_n) 
-offset <- new_1cms_stage - hall_1cms_stage
+Q_stats <- Q %>%
+  group_by(year) %>%
+  summarize(RBI = RBIcalc(discharge_m3s),
+            ar_1 = arima(discharge_m3s, order = c(1,0,0))$coef[1],
+            q05 = quantile(discharge_m3s, .05, na.rm = T),
+            mean = mean(discharge_m3s, na.rm = T),
+            median = median(discharge_m3s, na.rm = T))
 
-new_Q <- new_Q %>%
-  mutate(mod_stage = exp((log(discharge_m3s) - a_n)/ b_n),
-         stage_m = ifelse(is.na(stage_m), 
-                              mod_stage, 
-                              stage_m)) %>%
-  select(-mod_stage)
-# don't let offest be larger than min stage:
-offset <- min(c(offset, new_Q$stage_m), na.rm = T) 
 
-new_Q$stage_m <- new_Q$stage_m - offset
+bf_19 <- Q %>%
+  filter(year==2019,
+         !is.na(discharge_m3s)) %>%
+  mutate(discharge_m3s = na.approx(discharge_m3s, na.rm = F),
+         bf = RHydro::baseflow_sep(discharge_m3s),
+         stormflow = discharge_m3s - bf,
+         bf_frac = bf/discharge_m3s)
+bf_69 <- Q %>%
+  filter(year==1969,
+         !is.na(discharge_m3s)) %>%
+  mutate(discharge_m3s = na.approx(discharge_m3s, na.rm = F),
+         bf = RHydro::baseflow_sep(discharge_m3s),
+         stormflow = discharge_m3s - bf,
+         bf_frac = bf/discharge_m3s) 
 
-qlim <- new_Q %>%
-  group_by(doy) %>%
-  summarize(low_discharge_m3s = min(discharge_m3s, na.rm = T), 
-            high_discharge_m3s = max(discharge_m3s, na.rm = T), 
-            low_stage_m = min(stage_m, na.rm = T),
-            high_stage_m = max(stage_m, na.rm = T))
 
-Q <- new_Q %>%
-#  filter(year(date) == 2019) %>%
-  mutate(year = year(date)) %>%
-#  select(-date) %>%
-  left_join(qlim, by = "doy") %>%
-  bind_rows(hall_Q) %>%
-  arrange(date)
+summary(bf_69)
+
+
+Q_stats <- data.frame(bffrac = c(sum(bf_69$bf)/sum(bf_69$discharge_m3s),
+                      sum(bf_19$bf)/sum(bf_19$discharge_m3s))) %>%
+  bind_cols(Q_stats)
+write_csv(Q_stats, "../NHC_2019_metabolism/data/rating_curves/Q_stats_nowthen_hall.csv")
+# Discharge and Level ####
+
+# load Hall rating curve, calculate equation
+# 
+# hall_rc <- read_csv("data/hall/hall_figure5_digitized_ratingcurve.csv")
+# # Calculate discharge from rating curves
+# # Q = a * L ^ b
+# 
+# m <- lm(log(hall_rc$discharge_m3s) ~ log(hall_rc$stage_cm))
+# a <- summary(m)$coefficients[1]
+# b <- summary(m)$coefficients[2]#Summary of the regression statistics
+# plot(hall_rc$stage_cm, hall_rc$discharge_m3s)#, log = "y")
+# lines(seq(10, 90, by = 1), exp(a + b * log(seq(10, 90, by = 1))))
+# min(hall_rc$stage_cm)
+# 
+# hall_1cms_stage <- exp((log(1) - a)/b)/100 
+# 
+# # not good for stages above 80 cm
+# hall_Q <- read_csv("data/hall/hall_figure26_digitized_dailystage.csv") %>%
+#   mutate(discharge_m3s = exp(a + b * log(stage_cm)),
+#          date = as.Date(date, format = "%m/%d/%Y")) %>%
+#   arrange(date)
+# 
+# hall_dates <- data.frame(date = seq(hall_Q$date[1], hall_Q$date[nrow(hall_Q)], 
+#                                     by = 1))
+# hall_dates$doy <- as.numeric(format(hall_dates$date, "%j"))
+# 
+# hall_Q <- left_join(hall_dates, hall_Q)
+# 
+# hall_Q$discharge_m3s <- na.approx(hall_Q$discharge_m3s)
+# hall_Q$stage_m <- na.approx(hall_Q$stage_cm)/100
+# # plot(hall_Q$date, hall_Q$discharge_m3s)
+# # abline(h=3)
+# 
+# hall_Qlim <- hall_Q %>% 
+#   group_by(doy) %>%
+#   summarize(low_discharge_m3s = min(discharge_m3s, na.rm=T),
+#             high_discharge_m3s = max(discharge_m3s, na.rm = T), 
+#             low_stage_m = min(stage_m, na.rm = T),
+#             high_stage_m = max(stage_m, na.rm = T))
+# 
+# hall_Q <- hall_Q %>%
+# #  filter(year(date) == 1969) %>%
+#   mutate(year = year(date)) %>%
+#   left_join(hall_Qlim, by = "doy") %>%
+#   select(-stage_cm) %>%
+#   as_tibble()
+# 
+# new_Q <- read_csv("../NHC_2019_metabolism/data/metabolism/processed/NHC.csv") %>%
+#   mutate(datetime = force_tz(DateTime_EST, tzone = "EST"),
+#          date = as.Date(datetime)) %>%
+#   select(datetime, date, level_m, discharge) %>%
+#   group_by(date) %>% 
+#   summarize(discharge_m3s = mean(discharge, na.rm=T),
+#             stage_m = mean(level_m, na.rm = T)) %>%
+#   mutate(doy = as.numeric(format(date, "%j")),
+#          discharge_m3s = ifelse(discharge_m3s < 1e-4, 
+#                             NA, discharge_m3s))
+# 
+#   
+# m <- lm(log(new_Q$discharge_m3s) ~ log(new_Q$stage_m))
+# a_n <- summary(m)$coefficients[1]
+# b_n <- summary(m)$coefficients[2]#Summary of the regression statistics
+# plot(new_Q$stage_m, new_Q$discharge_m3s, ylim = c(0,10))
+# lines(seq(0.5, 1.50, by = .1), exp(a_n + b_n * log(seq(.5, 1.5, by = .1))))
+# 
+# # find what flow is at NHC when flow at CBP is 1 m3s
+# # qq <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/siteData/interpolatedQ_allsites.csv") %>%
+# #   filter(CBP.Q <=3)
+# # plot(qq$CBP.Q, qq$NHC.Q)
+# # abline(0,1, col = 2, lty = 2, lwd = 1)
+# # qm <- lm(qq$NHC.Q ~ qq$CBP.Q)
+# # qs = summary(qm)$coefficients[2]
+# # abline(0,qs, col = 3, lty = 2, lwd = 2)
+# 
+# qs <- 1.06683
+# 
+# new_1cms_stage <- exp((log(qs) - a_n)/b_n) 
+# offset <- new_1cms_stage - hall_1cms_stage
+# 
+# new_Q <- new_Q %>%
+#   mutate(mod_stage = exp((log(discharge_m3s) - a_n)/ b_n),
+#          stage_m = ifelse(is.na(stage_m), 
+#                               mod_stage, 
+#                               stage_m)) %>%
+#   select(-mod_stage)
+# # don't let offest be larger than min stage:
+# offset <- min(c(offset, new_Q$stage_m), na.rm = T) 
+# 
+# new_Q$stage_m <- new_Q$stage_m - offset
+# 
+# qlim <- new_Q %>%
+#   group_by(doy) %>%
+#   summarize(low_discharge_m3s = min(discharge_m3s, na.rm = T), 
+#             high_discharge_m3s = max(discharge_m3s, na.rm = T), 
+#             low_stage_m = min(stage_m, na.rm = T),
+#             high_stage_m = max(stage_m, na.rm = T))
+# 
+# Q <- new_Q %>%
+# #  filter(year(date) == 2019) %>%
+#   mutate(year = year(date)) %>%
+# #  select(-date) %>%
+#   left_join(qlim, by = "doy") %>%
+#   bind_rows(hall_Q) %>%
+#   arrange(date)
 
 # plots of then and now Q  ####
+
+
 
 png(width=7, height=4, units='in', type='cairo', res=300,
     filename='figures/daily_level_focalyears.png')
@@ -292,3 +373,5 @@ legend("topright", cex = 1.4,
        c("2019-2020","1968-1970"),
        col = c("grey35", "darkred"), lty = 1, lwd = 2, bty = "n")
 dev.off()
+
+

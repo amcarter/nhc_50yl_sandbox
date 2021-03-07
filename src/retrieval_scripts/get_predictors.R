@@ -1040,9 +1040,23 @@ if(rebuild_all){
     proj = choose_projection(lat = nhc_mouth$latitude,
                              long = nhc_mouth$longitude)
 
-    nhc_ripar = filter(nhc_lines,
+    st_write(st_combine(nhc_lines),
+             dsn = 'data/map_files',
+             layer = 'stream_lines',
+             driver = 'ESRI shapefile',
+             delete_layer = TRUE)
+
+    study_reaches = filter(nhc_lines,
                        nhdplus_comid %in% c(8895490, 8895362, 8895420, 8895440)) %>%
-        st_combine() %>%
+        st_combine()
+
+    st_write(study_reaches,
+             dsn = 'data/map_files',
+             layer = 'study_reaches',
+             driver = 'ESRI shapefile',
+             delete_layer = TRUE)
+
+    nhc_ripar = study_reaches %>%
         st_transform(crs = proj) %>%
         st_buffer(dist = 250) %>%
         st_transform(crs = 4326)

@@ -1,12 +1,5 @@
 # plot precip data for NHC watershed
-
-library(ggplot2)
-library(tidyverse)
-library(lubridate)
-
-setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/code/")
-
-nldas <- read_csv("data/nldas.csv") %>%
+nldas <- read_csv("hall_50yl/code/data/nldas.csv") %>%
   dplyr::select(datetime = DateTime, value = '1', variable) %>% 
   filter(!variable %in% c("wind_speed",
                           "max_relative_humidity",
@@ -18,7 +11,7 @@ ggplot(nldas, aes(x=datetime, y = value)) +
   facet_wrap(.~variable, scales = "free_y" )
 
   
-precip = read_csv('data/prism/prism_raw.csv') %>%
+precip = read_csv('hall_50yl/code/data/prism/prism_raw.csv') %>%
   as_tibble() %>%
   dplyr::select(datetime = DateTime, precip_mm = '1') %>% 
   pivot_longer(cols = precip_mm, names_to = "variable", values_to = "value")
@@ -28,6 +21,12 @@ precip = read_csv('data/prism/prism_raw.csv') %>%
   # ungroup()
 all <- bind_rows(nldas, precip) %>% 
   pivot_wider(names_from = "variable", values_from = "value")
+
+all %>%
+  rename(precip_daily_mm = precipitation_amount,
+         precip_monthly_mm = precip_mm) %>%
+  write_csv("hall_50yl/code/data/compiled_nldas_prisim_precip.csv")
+            
 
 plot(all$precip_mm, all$precipitation_amount)
 
@@ -43,16 +42,20 @@ pp <- all %>%
             percent_extreme = cum90/cumulative_precip) %>%
   select(-cum90, -max_precip) %>%
   pivot_longer(cols= -year, names_to = "variable", values_to = "value")
-
-png("../figures/precip.png", width = 7.5, height = 6, units = "in", res = 300)
+png("figures/precip.png", width = 7.5, height = 6, units = "in", res = 300)
 ggplot(pp, aes(x = year, y = value)) +
   geom_point() +
   facet_wrap(.~variable, scales = "free_y", dir = "v", switch = "y") +
-  geom_smooth(method = lm, lwd = 1, col = "black") 
+  geom_smooth(method = lm, lwd = 1, col = "black") +
   theme_minimal()
 dev.off()
 
-
+# look at Florence
+all %>% filter(datetime >= ymd_hms('2018-09-15 00:00:00'),
+               datetime <= ymd_hms('2018-09-17 00:00:00')) %>%
+  summarize(precip = sum(precipitation_amount))
+  ggplot(aes(datetime, precipitation_amount))+
+  geom_line()
 # calculate precip during 2019 drought ####
 p19 <- all %>%
   filter(as.numeric(substr(datetime, 1, 4)) == 2019, 

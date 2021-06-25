@@ -2,6 +2,7 @@
 
 # library(nleqslv)
 library(tidyverse)
+library(streamMetabolizer)
 # 11/17/2020
 
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/code")
@@ -27,10 +28,22 @@ hall_K <- bind_rows(diurnalk, morphk, domek)
 
 kk <- morphk %>%
   mutate(depth.f = depth.m*3.28084,
-         v_fs = (k2_d / (5.026 * depth.f ^ (-1.673)))^(1/.969),
+         v_fs = (k2_d / (5.026 * depth.f ^ (-1.673) * depth.m))^(1/.969),
          v_ms = v_fs/3.28084,
-         K600 = K600fromO2(20, k2_d)) %>%
+         K_O2 = 2.3 * 9 * k2_d/24,
+         K600 = K600fromO2(20, K_O2*24)) %>%
   select(-v_fs)
+
+convertK600toK2_d <- function(K600, temp, airP = 101.3) {
+  K_d_area = K600/(((600/(1800.6-(120.1*temp)+(3.7818*temp^2)-
+                            (0.047608*temp^3)))^-0.5))
+  DOsat <- calc_DO_sat(temp, airP * 10)
+  K2_d_area = K_d_area/2.3/DOsat
+  K2_20_d = K2_d_area/(1.024^(20-temp))
+
+  return(K2_20_d)
+}
+
 
 T0 = 2.00856
 T1 = 3.224

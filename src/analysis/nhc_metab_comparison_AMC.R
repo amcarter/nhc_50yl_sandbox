@@ -13,9 +13,6 @@ library(scales)
 library(tidyverse)
 library(lubridate)
 
-setwd('C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/code')
-
-
 #setup ####
 
 #switch this to TRUE if you want to use only modern metab estimates from days
@@ -23,7 +20,7 @@ setwd('C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/code')
 filter_high_Q = FALSE
 
 #read in historic data and average across multiple same-site, same-day estimates
-nhc_68_70 = read.csv('data/hall_data/hall_table_15.csv', colClasses=c('date'='Date'))
+nhc_68_70 = read.csv('hall_50yl/code/data/hall_data/hall_table_15.csv', colClasses=c('date'='Date'))
 nhc_68_70 = nhc_68_70 %>%
     group_by(date, site) %>%
     summarize_if(is.numeric, mean, na.rm=TRUE) %>%
@@ -71,7 +68,7 @@ nep_69 = gpp_69 - er_69
 #            ER = ifelse(ER > -20, ER, NA),
 #            K600 = ifelse(K600 <= 0, NA, K600),
 #            year = year(date))
-nhc_new <- read_rds("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/metabolism/hall/hall_met_60min.rds")$preds
+nhc_new <- read_rds("NHC_2019_metabolism/data/metabolism/hall/hall_met_60min_2021_01.rds")$preds
 if(filter_high_Q){
     dc <- 0.65 # depth cutoff from Hall
     #highest considered depth in Hall dissertation: 0.65m
@@ -114,7 +111,7 @@ qqnorm(gpp_new); abline(1, 1, col='red', lty=2)
 
 #distribution plots ####
 png(width=9, height=6, units='in', type='cairo', res=300,
-    filename='../figures/metab_distributions_v2.png')
+    filename='figures/metab_distributions_v2.png')
 
 defpar = par(mfrow=c(2,3))
 
@@ -240,7 +237,7 @@ plot(historic_dates, rep(1, length(historic_dates), type='n', xlab='day'),
 abline(v=historic_dates, lty=2, col='gray')
 
 png(width=7, height=6, units='in', type='cairo', res=300,
-    filename='~/Dropbox/streampulse/figs/NHC_comparison/historic_coverage.png')
+    filename='../figures/sitecoverage.png')
 
 par(mfrow=c(4,1), mar=c(0,0,0,0), oma=c(3,4,3,0))
 
@@ -313,7 +310,7 @@ mtext('Normal Q-Q Plots (red line = 1:1)', 3, outer=TRUE, line=1.5)
 #nonnormal, but CLT probably applies.
 #let's assess equality of variance with an F-test
 var.test(gpp_68_70, gpp_new) #not equal: p < 0.001
-var.test(er_68_70, er_new) #not equal: p < 0.00001
+var.test(er_68_70, er_new) #not equal: p < 0.001
 
 #unequal variance, so 2-sample t-test is out.
 #not i.i.d., so welch's t-test is out (could transform)
@@ -685,13 +682,13 @@ CI_prop[4,] = -quantile(sort(mean_vect_er_new), probs=c(0.025, 0.5, 0.975))
 # write.csv(CI, '~/Dropbox/streampulse/figs/NHC_comparison/metab_CIs.csv')
 
 png(width=6, height=4, units='in', type='cairo', res=300,
-filename='../figures/bootstrapped_metabolism_CI_comparison_CBP.png')
+filename='figures/bootstrapped_metabolism_CI_comparison_CBP.png')
 
 
 par(mfrow = c(1,2))
 boxplot(t(CI), col = c(alpha("darkred",.75),"grey35" ),
         ylab = "CI around mean (g O2/m2/d)",
-        ylim = c(.5, 3), 
+        ylim = c(.6, 1.8), 
         xaxt = "n", xlab = "")
 axis(1, at=c(1.5, 3.5), labels=c("GPP", "ER"), line=0)
     #, col='transparent', tcl=0, font=2)
@@ -704,7 +701,7 @@ mtext("All Sites")
 
 boxplot(t(CI_prop), col = c(alpha("darkred",.75),"grey35" ), 
         ylab = "CI around mean (g O2/m2/d)", 
-        ylim = c(0.5, 3),
+        ylim = c(.6, 1.8),
         xaxt = "n", xlab = "")
 axis(1, at=c(1.5, 3.5), labels=c("GPP", "ER"), line=0)
 # legend("topleft",cex=1.4, bty = "n",

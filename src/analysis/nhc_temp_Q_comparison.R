@@ -11,16 +11,141 @@ library(zoo)
 library(ContDataQC)
 library(RHydro)
 
-setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl")
-
-
 # Water Temperature ####
 # load new NHC data - update if it's been a while since 10/14/20
 # nhc_mega <- StreamPULSE::request_data("NC_NHC", variables=c("WaterTemp_C", "DO_mgL"))
 # write_rds(nhc_mega, "data/NHC_watertemp.rds")
+nhc <- readRDS("NHC_2019_metabolism/data/metabolism/compiled/met_preds_direct_calc.rds")$filled %>%
+  filter(site == "NHC") 
+  
 
-nhc_mega <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/metabolism/processed/NHC.csv", 
-                     guess_max = 10000)
+nhc_qt <- nhc %>% 
+  group_by(doy) %>% 
+  summarize(across(any_of(c("temp.water", "discharge")), 
+                   .fns = list(max = ~max(., na.rm = T),
+                               min = ~min(., na.rm = T)),
+                   .names = '{col}_{fn}')) %>%
+  ungroup() %>%
+  right_join(nhc, by = "doy") %>%
+  filter(year ==2019) %>%
+  select(date, doy, year, starts_with(c("temp.water", "discharge"))) %>%
+  mutate(discharge_min = ifelse(discharge_min < 0.00675, 0.00675, discharge_min))
+
+hall <- read_csv("hall_50yl/code/data/hall/hall_discharge_temp_daily.csv") %>%
+  mutate(doy = as.numeric(format(date, '%j')),
+         year = case_when(date < as.Date("1969-04-08") ~ 1968, 
+                          date < as.Date("1970-04-08") ~ 1969,
+                          TRUE ~ 1970)) %>%
+  rename(temp.water = water_temp_C, discharge = discharge_m3s)
+
+hall_qt <- hall %>%
+  group_by(doy) %>% 
+  summarize(across(any_of(c("temp.water", "discharge")), 
+                   .fns = list(max = ~max(., na.rm = T),
+                               min = ~min(., na.rm = T)),
+                   .names = '{col}_{fn}')) %>%
+  ungroup() %>%
+  right_join(hall, by = "doy") %>%
+  filter(year == 1969) %>%
+  select(date, doy, year, starts_with(c("temp.water", "discharge"))) %>%
+  mutate(discharge_min = ifelse(discharge_min < 0.00675, 0.00675, discharge_min))
+
+h <- hall %>% group_by(month(date)) %>% summarize_all(mean, na.rm = T)
+nhc %>% group_by(month(date)) %>% summarize_all(mean, na.rm = T) %>%
+  select('month(date)', temp_now = temp.water) %>%
+  full_join(h, by = 'month(date)') %>%
+  mutate(temp_diff = temp_now - temp.water)
+
+png("figures/watertemp_comparison.png", width = 6, height = 4.5, 
+    units = 'in', res = 300)
+  par(mfrow = c(2,1), mar = c(0,4,.5,2), oma = c(4,0,1,0))
+  plot(nhc_qt$doy, nhc_qt$temp.water, type = 'l', lwd = 2, ylim = c(0, 28),
+       xaxt = 'n', xlab = 'date', ylab = '')
+  mtext('Water temperature C', 2, 2.1)
+  polygon(c(nhc_qt$doy, rev(nhc_qt$doy)), 
+          c(nhc_qt$temp.water_min, rev(nhc_qt$temp.water_max)), 
+          col = alpha(now_col, .5),  border = NA)
+  polygon(c(hall_qt$doy, rev(hall_qt$doy)), 
+          c(hall_qt$temp.water_min, rev(hall_qt$temp.water_max)),
+          col = alpha(then_col, .3), border = NA)
+  lines(nhc_qt$doy, nhc_qt$temp.water, lwd = 2 )
+  lines(hall_qt$doy, hall_qt$temp.water, col = then_col,lwd = 2 )
+  legend('topright', legend = c(2019, 1969), col = c(1, then_col), lwd = 2,
+         lty = 1, ncol = 2, bty = 'n', cex = .8)
+  plot(nhc_qt$doy, nhc_qt$discharge, log = 'y', xaxt = 'n', xlab = 'Date', 
+       lwd = 2, type = 'l', yaxt = 'n', ylab = '')
+  mtext('Discharge (m3/s)',2,2.1) 
+  polygon(c(nhc_qt$doy, rev(nhc_qt$doy)),
+          c(nhc_qt$discharge_min, rev(nhc_qt$discharge_max)), 
+          col = alpha(now_col, .5), border = NA)
+  polygon(c(hall_qt$doy, rev(hall_qt$doy)),
+          c(hall_qt$discharge_min, rev(hall_qt$discharge_max)),
+          col = alpha(then_col, .3), border = NA)
+  lines(nhc_qt$doy, nhc_qt$discharge, lwd = 2)
+  lines(hall_qt$doy, hall_qt$discharge, lwd = 2, col = then_col)
+  axis(1, at = as.numeric(format(seq(as.Date('2020-01-01'), 
+                                     by = 'month', length.out = 12),'%j')),
+       labels = month.abb) 
+  axis(2, at = c(.01, 1, 100), labels = c(0.01, 1, 100))
+  
+dev.off()
+
+# RBI calculations ####
+
+Q_stats <- nhc %>%
+  arrange(date) %>%
+  mutate(discharge = na.approx(discharge, na.rm = F),
+         bf = RHydro::baseflow_sep(discharge),
+         stormflow = discharge - bf,
+         bf_frac = bf/discharge) %>%
+  group_by(year) %>%
+  summarize(RBI = RBIcalc(discharge),
+            ar_1 = arima(discharge, order = c(1,0,0))$coef[1],
+            q05 = quantile(discharge, .05, na.rm = T),
+            mean = mean(discharge, na.rm = T),
+            median = median(discharge, na.rm = T), 
+            bf_frac = mean(bf_frac, na.rm = T))
+
+write_csv(Q_stats, 'NHC_2019_metabolism/data/rating_curves/annual_Q_stats.csv')
+bf_19 <- nhc %>%
+
+  select(year, bf_frac) %>%
+  group_by(year)
+bf_69 <- Q %>%
+  filter(year==1969,
+         !is.na(discharge_m3s)) %>%
+  mutate(discharge_m3s = na.approx(discharge_m3s, na.rm = F),
+         bf = RHydro::baseflow_sep(discharge_m3s),
+         stormflow = discharge_m3s - bf,
+         bf_frac = bf/discharge_m3s) 
+
+
+summary(bf_69)
+
+
+Q_stats <- data.frame(bffrac = c(sum(bf_69$bf)/sum(bf_69$discharge_m3s),
+                                 sum(bf_19$bf)/sum(bf_19$discharge_m3s))) %>%
+  bind_cols(Q_stats)
+write_csv(Q_stats, "../NHC_2019_metabolism/data/rating_curves/Q_stats_nowthen_hall.csv")
+
+# old ####
+
+
+# png("figures/discharge_comparison.png", width = 5, height = 4, 
+#     units = 'in', res = 300, family = 'cairo')
+# ggplot(nhc_qt, aes(doy, log(discharge))) +
+#   geom_line(lwd = 1.2) +
+#   geom_ribbon(aes(ymin = log(discharge_min), ymax = log(discharge_max)),
+#               fill = alpha("grey40", .2)) +
+#   geom_line(data = hall_qt, aes(doy, log(discharge)), col = "brown4", lwd = 1.2) +
+#   geom_ribbon(data = hall_qt, aes(ymin = log(discharge_min),
+#                                   ymax = log(discharge_max)),
+#               fill = alpha("brown3", .2)) +
+#   theme_bw() +
+#   ylab("log(discharge)") +
+#   xlab("Day of year") + 
+#   ylim(-5,10) 
+# dev.off()
 
 nhc_19 <- nhc_mega %>%
   group_by(date = as.Date(with_tz(DateTime_UTC, tz = "EST"))) %>%
@@ -33,7 +158,7 @@ nhc_19 <- nhc_mega %>%
 # this data was digitized from Hall dissertation figure 27
 # using WebPlotDigitizer from github
 
-nhc_69 <- read_csv("data/hall/hall_discharge_temp_daily.csv") %>%
+nhc_69 <- read_csv("hall_50yl/code/data/hall/hall_discharge_temp_daily.csv") %>%
   mutate(doy = format(date, "%j"),
          hall = "then") %>%
   select(-stage_cm, -notes)

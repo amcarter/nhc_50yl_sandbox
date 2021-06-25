@@ -1,0 +1,5 @@
+data/*
+!data/hall_data
+!data/gee
+.Rhistory
+/figs

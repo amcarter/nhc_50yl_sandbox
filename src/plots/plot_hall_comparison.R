@@ -15,16 +15,17 @@ ylims=c(-15,5)
 GPP.col="#74B16D"
 ER.col="#B99D82"
 PAR.col = "#FFE083"
-hall_met <- read_csv("data/hall_table_15.csv")
-    hall_met$ER_gO2m2d <- -hall_met$ER_gO2m2d
+hall_met <- read_csv("data/hall/hall_table_15.csv")
+hall_met$ER_gO2m2d <- -hall_met$ER_gO2m2d
 # NHCdat <- readRDS("../NHC_2019_metabolism/data/metabolism/condensed/allNHCsites.rds")
 # metab <- NHCdat$metab
 # metab[!is.na(metab$GPP)&metab$GPP<0,c("GPP","GPP.upper","GPP.lower")]<-NA
 # metab[!is.na(metab$ER)&metab$ER>0,c("ER","ER.upper","ER.lower")]<-NA
-metab <- read_rds("data/NHC_metab_allsites.rds")
-
+ metab1 <- read_rds("data/NHC_metab_allsites.rds")
+metab <- 
+    read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/metabolism/compiled/churchill_fixed_k_met.csv")
 # data <- NHCdat$data
-sites <- c("UNHC","WBP","WB","CBP","PM","NHC")
+sites <- c("UNHC","PWC","WBP","WB","CBP","PM","NHC")
 # sitematch <- data.frame(hall = c("Concrete", "Blackwood", "Wood Bridge"), 
 #                         sitecode= c("CBP", "UNHC", "WB"))
 

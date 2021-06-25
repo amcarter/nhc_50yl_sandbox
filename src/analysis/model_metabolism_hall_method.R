@@ -1,26 +1,125 @@
 # Calculate Metabolism using Hall method
 
-library(tidyverse)
-library(lubridate)
-library(zoo)
+# library(tidyverse)
+# library(lubridate)
+# library(zoo)
 library(pracma)
-setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data")
-source("../src/streamMetabolizer/inspect_model_fits.r")
+# setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data")
+source("NHC_2019_metabolism/src/streamMetabolizer/inspect_model_fits.r")
 
-
-kq_hall <- read_csv("siteData/KQ_hall_prior_from_equation_daily.csv")
-flow_dates <- read_csv("rating_curves/flow_dates_filter.csv")
+kq_hall <- read_csv("NHC_2019_metabolism/data/siteData/KQ_hall_prior_from_equation_daily.csv")
+flow_dates <- read_csv("NHC_2019_metabolism/data/rating_curves/flow_dates_filter.csv")
 met_68 = read_csv('C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/data/hall/hall_table_15.csv')
+
+# test run with Hall data ####
+# hall_test = read_csv('hall_50yl/code/data/hall/Hall_figure8_DO_CBP_1970_02_14.csv')
+# hall_dodt = read_csv('hall_50yl/code/data/hall/Hall_figure8_DO_CBP_1970_02_14_dodt.csv')
+# d <- as.Date("1970-02-14")
+# # dodt <- diff(hall_test$DO.obs)/diff(hall_test$hour)
+# # day <- data.frame(hour = c(0, hall_test$hour[1:(nrow(hall_test)-1)] + 
+# #                              diff(hall_test$hour)/2, 24),
+# #                   dodt = c(dodt[1], dodt, dodt[length(dodt)]))
+# day <- hall_dodt
+# day$k_gm3hr <- 0.58
+# sat <- day %>%
+#   select(hour) %>% full_join(hall_test) %>% 
+#   arrange(hour) %>%
+#   select(-DO.obs)
+# sat$DO.sat[1] <- hall_test$DO.sat[1] 
+# day <- sat %>%
+#   mutate(DO.sat = na.approx(DO.sat, x = hour)) %>%
+#   right_join(day, by = "hour")
+# day <- day %>%
+#   mutate(dodt_diff = (1-DO.sat)* k_gm3hr,
+#          dodt_cor = dodt - dodt_diff)
+# sun <- data.frame(hour = c(6,20))
+# 
+# day <- day %>%
+#   full_join(sun, by = "hour") %>%
+#   arrange(hour) %>%
+#   mutate(across(-hour, ~na.approx(., x = hour))) 
+# 
+# sunrise = 6
+# sunset = 20
+# 
+# ps <- day %>%
+#   filter(hour >=18 & hour <=22)
+# ps_min <- ps$hour[which.min(ps$dodt_cor)]
+# a_gpp <- day %>% 
+#   filter(hour >= sunrise & hour <= ps_min) %>%
+#   select(hour, dodt_cor) %>%
+#   mutate(line = NA_real_)
+# a_gpp <- data.frame(hour = seq(a_gpp$hour[1], a_gpp$hour[nrow(a_gpp)], by = .25)) %>%
+#   full_join(a_gpp, by = "hour") %>%
+#   arrange(hour)
+# 
+# a_gpp$line[c(1, nrow(a_gpp))] <- a_gpp$dodt_cor[c(1, nrow(a_gpp))]
+# a_gpp <- a_gpp %>%
+#   mutate(line = na.approx(line, hour),
+#          dodt_cor = na.approx(dodt_cor, x = hour),
+#          dodt_cor = ifelse(dodt_cor < line, line, dodt_cor))
+# 
+# # build polygon for er that is all negative values of DO/dt
+# a_er <- data.frame(hour = seq(0, 24, by = .25)) %>%
+#   full_join(day, by = "hour") %>%
+#   arrange(hour) %>%
+#   select(hour, dodt_cor)
+# a_er$dodt_cor[1] <- a_er$dodt_cor[which(!is.na(a_er$dodt_cor))[1]]  
+# a_er <- a_er %>% 
+#   mutate(dodt_cor = na.approx(dodt_cor, hour),
+#          dodt_cor = ifelse(dodt_cor > 0, 0, dodt_cor)) %>%
+#   left_join(a_gpp[,c(1,3)], by = "hour") %>%
+#   mutate(dodt_cor = case_when(is.na(line) ~ dodt_cor,
+#                               dodt_cor < line ~ dodt_cor,
+#                               TRUE ~ line))
+# start <- data.frame(hour = 0, dodt_cor = 0)
+# end <- data.frame(hour = 24, dodt_cor = 0)
+# a_er <- bind_rows(start, a_er, end)
+# plot(day$hour, day$dodt_cor, type = "l",lty = 1, main = d, lwd = 2, 
+#      ylim = range(c(day$dodt, day$dodt_cor), na.rm = T),
+#      ylab = "dDO/dt (gO2/m3/hr)", xlab = "hour")
+# lines(day$hour, day$dodt, lwd = 2,lty = 2,)
+# abline(h = 0)
+# abline(v = c(sunrise, sunset), lwd = 2, 
+#        lty = 3, col = "goldenrod")
+# # lines(day$hour, day$dodt_diff, lty = 2)
+# 
+# polygon(a_gpp$hour, a_gpp$dodt_cor, border = "black",
+#         density = 20, angle = 45, 
+#         col = alpha("forestgreen", 1))
+# polygon(a_er$hour, a_er$dodt_cor, border = NA,
+#         density = 20, angle = -45,
+#         col = alpha("sienna", 1))
+# # points(day$hour, day$dodt_pred, pch = 19, col = 5)
+# legend("topright", cex = .5,
+#        legend = c("dDO/dt uncorrected", "dDO/dt corrected", 
+#                   "sunrise/set",
+#                   "GPP", "ER"), 
+#        fill = c(NA, NA, NA, "forestgreen","sienna"),
+#        density = c(0, 0, 0, 45, 45),
+#        angle = c(NA, NA, NA, 45, -45),
+#        col = c(1, 1, "goldenrod", NA, NA),
+#        border = c(NA, NA, NA, 1,1), 
+#        lty = c(2, 1, 3, NA, NA),
+#        x.intersp = c(2, 2, 2, 0.5, 0.5),
+#        bty = "n")
+# depth = .4
+# m <- data.frame(date = d,
+#                 gpp_gO2m3d = abs(polyarea(a_gpp$hour, a_gpp$dodt_cor))*depth,
+#                 er_gO2m3d = abs(polyarea(a_er$hour, a_er$dodt_cor))*depth,
+#                 k_gm3hr = day$k_gm3hr[1])
+
 # Metabolism functions ####
 # calculate hall met given k2 and a day of data spaced at dt min intervals
-fit_metab_hall <- function(day, k2, dt = 15, plot = TRUE){
+
+fit_metab_hall <- function(day, dt = 15, plot = TRUE){
   # calculate the slope (in mgo2/m3/hr) at each point
   d <- as.Date(day$DateTime_EST[1])
-  day$dodt <- c(day$DO.obs[2] - day$DO.obs[1], diff(day$DO.obs)) * 60/dt 
+  s <- day$site[1]
+  day$dodt <- c(day$DO.obs[2] - day$DO.obs[1], diff(day$DO.obs)) * 60/dt # mgO2/m3/hr
   
   day <- day %>%
-    mutate(k_gm3hr = (2.3*DO.sat*k2)/(24),          # k in g/m3/h/100% sat def
-           dodt_diff = (DO.sat - DO.obs) * k_gm3hr, # diffusion due to sat def
+    mutate(dodt_diff = (1 - DO.obs/DO.sat) * k_gm3hr, # diffusion due to sat def
            dodt_cor = dodt - dodt_diff,             # dodt corrected for diff
            hour = (seq(1:nrow(day))-1)/60 * dt)
   # if missing data, cannot calc met (these ts are already gap filled up to 3 hrs)
@@ -36,7 +135,7 @@ fit_metab_hall <- function(day, k2, dt = 15, plot = TRUE){
   sunrise <- sun[1]-1
   sunset <- sun[length(sun)]+1
   # find minimum change in two hours post sunset
-  ps_min <- sunset -1 + which.min(day$dodt_cor[sunset:(sunset+2*60/dt)])
+  ps_min <- sunset -2 + which.min(day$dodt_cor[(sunset-60/dt):(sunset+2*60/dt)])
   
   # build polygon for gpp by connecting sunrise to post sunset minimum
   a_gpp <- day %>%
@@ -47,9 +146,12 @@ fit_metab_hall <- function(day, k2, dt = 15, plot = TRUE){
     left_join(a_gpp, by = "hour")
   
   if(a_gpp$dodt_cor[1] > 0){
-    tmp <- data.frame(hour = a_gpp$hour[1], 
-                      dodt_cor = 0)
-    a_gpp <- bind_rows(tmp, a_gpp)
+    a_gpp <- bind_rows(data.frame(hour = a_gpp$hour[1], 
+                      dodt_cor = 0), a_gpp)
+  }
+  if(a_gpp$dodt_cor[nrow(a_gpp)] > 0) {
+    a_gpp <- bind_rows(a_gpp, data.frame(hour = a_gpp$hour[nrow(a_gpp)],
+                                         dodt_cor = 0))
   }
   a_gpp$line[c(1, nrow(a_gpp))] <- a_gpp$dodt_cor[c(1, nrow(a_gpp))]
   a_gpp <- a_gpp %>%
@@ -75,7 +177,8 @@ fit_metab_hall <- function(day, k2, dt = 15, plot = TRUE){
   # plot(day$hour, day$DO.obs, type = "b")
   # plot(day$hour, day$DO.obs/day$DO.sat, type = "l")
   # abline(h = 1)
-  plot(day$hour, day$dodt_cor, type = "l",lty = 1, main = d, lwd = 2, 
+  plot(day$hour, day$dodt_cor, type = "l",lty = 1, 
+       main = paste(d, s), lwd = 2, 
        ylim = range(c(day$dodt, day$dodt_cor), na.rm = T),
        ylab = "dDO/dt (gO2/m3/hr)", xlab = "hour")
   lines(day$hour, day$dodt, lwd = 2,lty = 2,)
@@ -105,12 +208,11 @@ fit_metab_hall <- function(day, k2, dt = 15, plot = TRUE){
          bty = "n")
   }
   
-  K600 = K600fromO2(mean(day$temp.water, na.rm = T),
-                    mean(day$k_gm3hr*24, na.rm = T))
+  K600 = day$K600[1]
   m <- data.frame(date = d,
                   gpp_gO2m3d = abs(polyarea(a_gpp$hour, a_gpp$dodt_cor)),
                   er_gO2m3d = abs(polyarea(a_er$hour, a_er$dodt_cor)),
-                  K2_day = k2,
+                  k_gm3hr = day$k_gm3hr[1],
                   K600 = K600)
   
   
@@ -131,10 +233,11 @@ fit_ts_metab_hall<- function(dat, kq_hall, s, plot = FALSE, dt = 15){
     kq <- kq_hall %>%
       filter(date == d,
              site == s)
-    k2 <- kq$k2[1]
+    day$k_gm3hr <- kq$k_gm3hr[1]
+    day$K600 <- kq$K600[1]
     
     # m <- fit_metab_hall(day, k2, plot = T, dt = 60)
-    m <- fit_metab_hall(day, k2, plot = plot, dt = dt)
+    m <- fit_metab_hall(day, plot = plot, dt = dt)
     met <- bind_rows(met, m)
   }
   
@@ -152,9 +255,6 @@ fit_ts_metab_hall<- function(dat, kq_hall, s, plot = FALSE, dt = 15){
     arrange(date)
   
   return(met)
-}
-K600fromO2 <- function(temp, KO2) {
-  ((600/(1800.6-(120.1*temp)+(3.7818*temp^2)-(0.047608*temp^3)))^-0.5)*KO2
 }
 filter_hall_met <- function(met, flow_dates){
   preds <- met %>%
@@ -210,8 +310,8 @@ filter_hall_met <- function(met, flow_dates){
               sump,
               cum))
 }
-get_met_year<- function(dat, kq_hall, s, flow_dates, year, dt = 15){  
-  met <- fit_ts_metab_hall(dat, kq_hall, s, dt = dt)
+get_met_year<- function(dat, kq_hall, s, flow_dates, year, dt = 15, plot = FALSE){  
+  met <- fit_ts_metab_hall(dat, kq_hall, s, dt = dt, plot = plot)
   # plot(met$date, met$gpp_gO2m2d, type = "l", col = "forestgreen",
   #      ylim = range(c(met$gpp_gO2m2d, -met$er_gO2m2d), na.rm = T))
   # lines(met$date, -met$er_gO2m2d, col = "sienna")
@@ -241,13 +341,13 @@ get_met_year<- function(dat, kq_hall, s, flow_dates, year, dt = 15){
 }           
 
 # Fit Metabolism ####
-filestring <- "metabolism/processed/"
-sites <- c("NHC", "PM", "CBP", "WB", "WBP", "UNHC")
+filestring <- "NHC_2019_metabolism/data/metabolism/processed/"
 
 preds_all <- data.frame()
 met_summary <- data.frame()
 preds_filled_all <- data.frame()
-for(s in sites){
+
+for(s in sites$sitecode){
  
   dat <- read_csv(paste0(filestring, s, ".csv"), guess_max = 10000) %>%
     mutate(DateTime_EST = with_tz(DateTime_UTC, tz = "EST"))
@@ -284,90 +384,114 @@ for(s in sites){
   
   year = 2019
   
-  out <- get_met_year(dat, kq_hall, s, flow_dates, year, dt = 60) 
+  out <- get_met_year(dat, kq_hall, s, flow_dates, year, dt = 60, plot = FALSE) 
   preds_all <- bind_rows(preds_all, out[[1]])
   met_summary <- bind_rows(met_summary, out[[2]])
   preds_filled_all <- bind_rows(preds_filled_all, out[[3]])
 }
 
-summary(preds_all)
 saveRDS(list(preds = preds_all, 
              summary = met_summary, 
              cumulative = preds_filled_all),
-        "metabolism/hall/hall_met_60min.rds")
+        "NHC_2019_metabolism/data/metabolism/hall/hall_met_60min_2021_01.rds")
 
-
-
-# inspect Metabolism ####
-met_15 <- readRDS("metabolism/hall/hall_met_15min.rds")
-met_60 <- readRDS("metabolism/hall/hall_met_60min.rds")
-met_sm <- readRDS("metabolism/hall/hall_met_15min_smoothed.rds")
-met_ray <- readRDS("metabolism/compiled/raymond_met.rds")
-
-write_csv(bind_rows(met_ray$summary, met_60$summary),
-          "metabolism/compiled/metabolism_summary_tables_v2.csv")
-
-png("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/figures/met_estimate_method_comparison_kernels.png",
-  width = 4, height = 4, units = "in", res = 300)
-  plot_kde_metab(met_ray$preds, col = "steelblue", lim = 10)
-  par(new = T)
-  plot_kde_metab(met_60$preds, col = "brown3", lim = 10)
-  legend("topright",
-         c("Hall 1972 method", "Stream Metabolizer"),
-         fill = c("brown3", "steelblue"),
-         border = NA, bty = 'n')
-dev.off()
-
-met <- met_15$preds %>%
-  as_tibble() %>%
-  select(date, site, discharge, depth, temp = temp.water,
-         gpp15 = GPP, er15 = ER) %>%
-  left_join(met_60$preds[,c(1,5,6,9)], by = c("date", "site")) %>%
-  rename(gpp60 = GPP, er60 = ER) %>%
-  left_join(met_sm$preds[,c(1,5,6,9)], by = c("date", "site")) %>% 
-  rename(gppsm = GPP, ersm = ER)
-png("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/figures/hall_metab_sample_frequency_comparison.png",
-    width = 5, height = 4, units = "in", res = 300)
-  par(mfrow = c(1,2))
-  plot(-met$er60, -met$er15, pch = 20, cex = .7, 
-       xlab = "60 min ER", ylab = "15 min ER")
-  points(-met$er60, -met$ersm, pch = 20, col = 5, cex = .7)
-  abline(0,1, col = 2)
-  plot(met$gpp60, met$gpp15, pch = 20, cex = .7, 
-       xlab = "60 min GPP", ylab = "15 min GPP")
-  points(met$gpp60, met$gppsm, pch = 20, col = 5, cex = .7)
-  abline(0,1, col = 2)
-  legend("topleft", 
-         c("raw", "smoothed"),
-         pch = 20, col = c(1,5), bty = "n")
-  par(new = T, mfrow = c(1,1))
-  mtext("Metabolism calculated as in Hall 1972", line = 1)
-dev.off()
-
-plot_kde_hall_metab(met_15$preds, lim = 8)
-par(new = T)
-plot_kde_metab(met_sm$preds, col = "steelblue", lim = 8)
-par(new = T)
-plot_kde_hall_metab(met_60$preds, lim = 10, site = "CBP")
-
-
-tmp <- met_68 %>%
-  mutate(pr = GPP_gO2m2d/ER_gO2m2d) %>%
-  arrange(pr)
-
-tmp <- met_60$preds %>%
-  mutate(pr = -GPP/ER) %>%
-  arrange(pr)
-
-summary(tmp)
-min(which(tmp$pr >= 1))/sum(!is.na(tmp$pr))
-median(tmp$GPP, na.rm = T)/median(tmp$ER, na.rm = T)
-median(tmp$GPP_gO2m2d, na.rm = T)/median(tmp$ER_gO2m2d, na.rm = T)
-median(met_60$preds$GPP, na.rm = T)/median(met_68$GPP_gO2m2d)
-median(met_60$preds$ER, na.rm = T)/median(met_68$ER_gO2m2d)
-
-w(tmp)
-tmp
-plot(tmp$GPP, -tmp$ER)
-abline(0,1, col = 2)
-plot(tmp$pr, ylim = c(0,2))
+# # inspect Metabolism ####
+# met_15 <- readRDS("metabolism/hall/hall_met_15min.rds")
+# met_60 <- readRDS("NHC_2019_metabolism/data/metabolism/hall/hall_met_60min_2021_01.rds")
+# met_sm <- readRDS("metabolism/hall/hall_met_15min_smoothed.rds")
+# met_ray <- readRDS("NHC_2019_metabolism/data/metabolism/compiled/raymond_met.rds")
+# 
+# write_csv(bind_rows(met_ray$summary, met_60$summary),
+#           "metabolism/compiled/metabolism_summary_tables_v2.csv")
+# 
+# png("figures/tmp/met_estimate_method_comparison_kernels.png",
+#   width = 10, height = 5, units = "in", res = 300)
+#   par(mfrow = c(1,2))
+#   plot_kde_metab(met_ray$preds, col = "steelblue", lim = 6)
+#   par(new = T)
+#   plot_kde_metab(met_60$preds, lim = 6)
+#   legend("topright",
+#          c("Hall method", "Stream Met"),
+#          fill = c("grey", "steelblue"),
+#          border = NA, bty = 'n', cex = 1.2)
+#   plot_kde_hall_metab(met_60$preds, lim = 6)
+# dev.off()
+# 
+# met <- met_15$preds %>%
+#   as_tibble() %>%
+#   select(date, site, discharge, depth, temp = temp.water,
+#          gpp15 = GPP, er15 = ER) %>%
+#   left_join(met_60$preds[,c(1,5,6,9)], by = c("date", "site")) %>%
+#   rename(gpp60 = GPP, er60 = ER) %>%
+#   left_join(met_sm$preds[,c(1,5,6,9)], by = c("date", "site")) %>% 
+#   rename(gppsm = GPP, ersm = ER)
+# png("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/figures/hall_metab_sample_frequency_comparison.png",
+#     width = 5, height = 4, units = "in", res = 300)
+#   par(mfrow = c(1,2))
+#   plot(-met$er60, -met$er15, pch = 20, cex = .7, 
+#        xlab = "60 min ER", ylab = "15 min ER")
+#   points(-met$er60, -met$ersm, pch = 20, col = 5, cex = .7)
+#   abline(0,1, col = 2)
+#   plot(met$gpp60, met$gpp15, pch = 20, cex = .7, 
+#        xlab = "60 min GPP", ylab = "15 min GPP")
+#   points(met$gpp60, met$gppsm, pch = 20, col = 5, cex = .7)
+#   abline(0,1, col = 2)
+#   legend("topleft", 
+#          c("raw", "smoothed"),
+#          pch = 20, col = c(1,5), bty = "n")
+#   par(new = T, mfrow = c(1,1))
+#   mtext("Metabolism calculated as in Hall 1972", line = 1)
+# dev.off()
+# 
+# plot_kde_hall_metab(met_15$preds, lim = 8)
+# par(new = T)
+# plot_kde_metab(met_sm$preds, col = "steelblue", lim = 8)
+# par(new = T)
+# plot_kde_hall_metab(met_60$preds, lim = 8, site = "CBP")
+# 
+# 
+# tmp <- met_68 %>%
+#   mutate(pr = GPP_gO2m2d/ER_gO2m2d) %>%
+#   arrange(pr)
+# 
+# dat <- met_60$preds %>%
+#   mutate(pr = -GPP/ER) %>%
+#   arrange(pr)
+# 
+# summary(tmp)
+# min(which(tmp$pr >= 1))/sum(!is.na(tmp$pr))
+# median(tmp$GPP, na.rm = T)/median(tmp$ER, na.rm = T)
+# median(tmp$GPP_gO2m2d, na.rm = T)/median(tmp$ER_gO2m2d, na.rm = T)
+# median(met_60$preds$GPP, na.rm = T)/median(met_68$GPP_gO2m2d)
+# median(met_60$preds$ER, na.rm = T)/median(met_68$ER_gO2m2d)
+# 
+# w(tmp)
+# tmp$index = seq(1:nrow(tmp))
+# plot(tmp$GPP, -tmp$ER)
+# abline(0,1, col = 2)
+# plot(log(tmp$pr), ylim = c(-5,5), pch = 20)
+# abline(h=0)
+# 
+# ggplot(tmp, aes(index,  log(pr), color = site)) +
+#   geom_point()
+# 
+# for(i in c(1:6)){
+#   s = sites$sitecode[i]
+#   tmp <- dat %>%
+#     filter(site == s,
+#            !is.na(pr),
+#            year == 2019) %>%
+#     arrange(pr) 
+#   plot(log(tmp$pr), ylim = c(-3,2), type = "l", col = 1, lwd = 2, 
+#        axes = F, ylab = "log(P/R)")
+#   par(new = T)
+# }
+# abline(h = 0)
+# axis(2)
+# legend("topleft", 
+#        legend = c("2019", "1969"), lty = 1, lwd = 2, cex = 1.2,
+#        col = c(1, "brown3"), bty = "n")
+# 
+# legend("topleft", 
+#        legend = sites$sitecode[c(1:6), drop = T], 
+#        lty = 1, lwd = 2, cex = 1.2,col = c(1:6), bty = "n")

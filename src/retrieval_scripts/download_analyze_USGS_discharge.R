@@ -58,23 +58,32 @@ site_dat <- read_csv("../data/USGS_gage_details.csv")
 #   I'll have to get the rest of the data.
 
 # drop cole mill and sandy_mlk for now, they doesn't have daily discharge
-site_dat <- site_dat[c(1,3,7),]
+# site_dat <- site_dat[c(1,7),]
 # nwis_dat <- readNWISdv(siteNumbers = site_dat$site_no,
-#                       parameterCd = c("00060", "00065"))
+                      # parameterCd = c("00060", "00065"))
 # nwis_dat <- dataRetrieval::addWaterYear(nwis_dat)
 # write_csv(nwis_dat, "data/raw_usgs_download.csv")
-nwis_dat <- read_csv("../data/raw_usgs_download.csv")
+# nwis_dat <- read_csv("../data/raw_usgs_download.csv")
 
 nwis <- nwis_dat %>% 
   mutate(discharge_m3s = (0.3048)^3 * X_00060_00003, # discharge in cfs
          gage_height_m = 0.3048 * X_00065_00003      # gage height in ft
          ) %>%
   dplyr::select(site_no, Date, waterYear, 
-        discharge_m3s, gage_height_m) %>%
+        discharge_m3s, gage_height_m, cd = X_00060_00003_cd) %>%
   as_tibble()
+
 
 nwis <- left_join(nwis, site_dat[,c(2,6)]) %>%
   filter(!is.na(site_id))
+         site_id == 'nhc_blands') 
+nwis %>%
+  filter(waterYear>2017) %>%
+  mutate(year= year(Date),
+         doy = as.numeric(format(Date, '%j')),
+         year = ifelse(doy<65, year-1, year)) %>%
+  ggplot(aes(Date, discharge_m3s, col = site_id )) +
+  geom_line()
 
 ggplot(nwis, aes(Date, log(discharge_m3s))) +
   geom_line() +
@@ -88,15 +97,27 @@ ggplot(nwis, aes(Date, log(discharge_m3s))) +
 # remotes::install_github("leppott/ContDataQC")
 library(ContDataQC)
 
+nwis <- nwis %>%
+  filter(site_id == 'eno_hillsborough')%>%
+  mutate(year= year(Date),
+         doy = as.numeric(format(Date, '%j')),
+         year = ifelse(doy<65, year-1, year)) 
 Q_stats <- nwis %>%
-  group_by(site_id, waterYear) %>%
+  group_by(year) %>%
   summarize(n = length(discharge_m3s), 
             RBI = RBIcalc(discharge_m3s),
             peak_Q = max(discharge_m3s, na.rm = T),
             ar_1 = arima(discharge_m3s, order = c(1,0,0))$coef[1],
+            median = median(discharge_m3s, na.rm = T),
+            mean = mean(discharge_m3s, na.rm = T),
+            cumulative = sum(discharge_m3s, na.rm = T)*60*60*24,
             q05 = quantile(discharge_m3s, .05, na.rm = T)) %>%
-  ungroup() %>%
-  filter(n >= 365) # Don't keep incomplete years
+  ungroup()%>%
+  filter(n >= 365,
+         year <2020) # Don't keep incomplete years
+
+
+write_csv(Q_stats, 'hall_50yl/code/data/nhcblands_usgs_stats.csv')
 png(width=7, height=6, units='in', type='cairo', res=300,
     filename='../figures/USGS_rbi_trends.png')
   

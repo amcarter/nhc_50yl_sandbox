@@ -25,7 +25,7 @@ setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl")
 # lat <- site_dat$latitude[site_dat$sitecode=="NHC"]
 # enddate <- site_dat$enddate.UTC[site_dat$sitecode=="NHC"] %>%
 #   as.POSIXct(format = "%m/%d/%Y %H:%M", tz = "UTC")
-# startdate <- as.POSIXct("1968-03-18 19:00:00", tz="UTC")
+# startdate <- as.POSIXct("1968-01-01 00:00:00", tz="UTC")
 # noaa_dat <- StreamPULSE:::FindandCollect_airpres(lat, long,
 #                                                  startdate,
 #                                                  enddate)
@@ -33,21 +33,21 @@ setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl")
 noaa_dat <- read_rds("data/noaa_air_temp_raw.rds")
 
 noaa_dat <- noaa_dat %>%
-  mutate(datetime = with_tz(DateTime_UTC, tzone="EST")) %>% 
+  mutate(datetime = with_tz(DateTime_UTC, tzone="EST"),
+         date = as.Date(datetime, tz = "EST")) %>% 
   select(-DateTime_UTC)
-noaa_dat$date <- as.Date(noaa_dat$datetime, tz = "EST")
-
 # summarize this into daily values
 daily <- noaa_dat %>%
   select(-datetime) %>%
   group_by(date) %>%
-  summarize_all(mean)
+  summarize(temp_mean = mean(air_temp, na.rm = T),
+            temp_min = min(air_temp, na.rm = T))
   
 # time series decompositon that plots the seasonal component separated from 
 #   the trend over time.
 
-plot(daily$date, daily$air_temp)
-dd <- decompose(ts(daily$air_temp, deltat = 1/365))
+plot(daily$date, daily$temp_mean)
+dd <- decompose(ts(daily$temp_mean, deltat = 1/365))
 plot(dd)
 
 decomp_noaa <- data.frame(air_trend = dd$trend,

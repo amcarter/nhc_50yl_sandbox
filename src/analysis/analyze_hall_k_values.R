@@ -5,14 +5,14 @@ library(tidyverse)
 library(streamMetabolizer)
 # 11/17/2020
 
-setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/code")
+setwd("C:/Users/Alice Carter/git/nhc_50yl/hall_50yl/code/")
 
-diurnalk <- read_csv("../data/hall/hall_tableA1_k_diurnalO2_unused.csv") %>%
+diurnalk <- read_csv("data/hall/hall_tableA1_k_diurnalO2_unused.csv") %>%
   mutate(method = "nreg")
-morphk <- read_csv("../data/hall/hall_tableA2_k_morphology.csv") %>%
+morphk <- read_csv("data/hall/hall_tableA2_k_morphology.csv") %>%
   mutate(method = "empirical", 
          location = "concrete_bridge") 
-domek <- read_csv("../data/hall/hall_tableA4_k_dome.csv") %>%
+domek <- read_csv("data/hall/hall_tableA4_k_dome.csv") %>%
   mutate(method = "dome")
 
 ##Convert KO2 to K600
@@ -27,8 +27,8 @@ hall_K <- bind_rows(diurnalk, morphk, domek)
 # to make sure you have the equations right
 
 kk <- morphk %>%
-  mutate(depth.f = depth.m*3.28084,
-         v_fs = (k2_d / (5.026 * depth.f ^ (-1.673) * depth.m))^(1/.969),
+  mutate(depth.f = depth_m*3.28084,
+         v_fs = (k2_d / (5.026 * depth.f ^ (-1.673) * depth_m))^(1/.969),
          v_ms = v_fs/3.28084,
          K_O2 = 2.3 * 9 * k2_d/24,
          K600 = K600fromO2(20, K_O2*24)) %>%

@@ -1,16 +1,17 @@
 # Compare nutrients measured in Hall to nutrients in NHC today
 
-setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/code/")
+setwd("C:/Users/Alice Carter/git/nhc_50yl/hall_50yl/code/")
 library(tidyverse)
 library(lubridate)
+library(zoo)
 
 # 1. Load Hall Data ####
 # table 26 has TP data
 
-t26 <- read_csv("../data/hall/hall_table_26.csv") %>%
+t26 <- read_csv("data/hall/hall_table_26.csv") %>%
   dplyr::rename(site = location)
-t13 <- read_csv("../data/hall/hall_table_13_p.csv")
-t14 <- read_csv("../data/hall/hall_table_14_nitrogen.csv") %>%
+t13 <- read_csv("data/hall/hall_table_13_p.csv")
+t14 <- read_csv("data/hall/hall_table_14_nitrogen.csv") %>%
   mutate(no2_mgl = ifelse(no2_mgl == "nd", 0, as.numeric(no2_mgl)), 
          no3_mgl = ifelse(no3_mgl =="nd", 0, as.numeric(no3_mgl)))
 hall <- full_join(t26, t13, by = c("date", "site", "TP_mgl")) %>%
@@ -18,10 +19,10 @@ hall <- full_join(t26, t13, by = c("date", "site", "TP_mgl")) %>%
   mutate(no3n_mgl = no3_mgl *14/(14+16*3),
          nh3n_mgl = nh3_mgl *14/17)
 
-dat_mar <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/longitudinal_sampling/NHCLongitudinalDO_20190308.csv") %>%
+dat_mar <- read_csv("C:/Users/Alice Carter/git/nhc_50yl/NHC_2019_metabolism/data/longitudinal_sampling/NHCLongitudinalDO_20190308.csv") %>%
   mutate(depth_cm = as.numeric(depth_cm), 
          NO3.N_mgl = NO3.N_mgl/10)
-dat_oct <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/longitudinal_sampling/NHCLongitudinalDO_20191009.csv")
+dat_oct <- read_csv("C:/Users/Alice Carter/git/nhc_50yl/NHC_2019_metabolism/data/longitudinal_sampling/NHCLongitudinalDO_20191009.csv")
 
 now <- bind_rows(dat_mar, dat_oct) %>%
   select(date, distance_m, depth_cm, temp_C, DO_mgL, SpC_uscm, 
@@ -32,7 +33,7 @@ summary(hall)
 summary(now)
 
 
-setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/ghg_patterns_nhc/")
+setwd("C:/Users/Alice Carter/git/ghg_patterns_nhc/")
 
 nuts <- read_csv("data/water_chemistry/water_chemistry_2019-2020_compiled.csv") %>%
   select(-sample_name, -time) %>%
@@ -83,7 +84,7 @@ spchem <- read_csv("data/water_chemistry/all_grab_data.csv") %>%
   mutate(po4p_mgl = ifelse(po4p_mgl > .3, NA, po4p_mgl))
 
 # pair with discharge and temperature
-dat <- read_csv('../NHC_2019_metabolism/data/rating_curves/interpolatedQ_allsites_modified.csv') %>%
+dat <- read_csv('C:/Users/Alice Carter/git/nhc_50yl/NHC_2019_metabolism/data/rating_curves/interpolatedQ_allsites_modified.csv') %>%
   rename(NHC = NHC.Q, UNHC = UNHC.Q) %>%
   dplyr::select(DateTime_UTC, NHC, UNHC) %>%
   pivot_longer(cols = -DateTime_UTC, names_to = "site", values_to = 'discharge') %>%
@@ -115,7 +116,7 @@ now <- bind_rows(now, chem)
 summary(now)
 
 # compare nuts to metabolism ####
-met <- readRDS("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl2/NHC_2019_metabolism/data/metabolism/compiled/met_preds_stream_metabolizer.rds")$preds %>%
+met <- readRDS("C:/Users/Alice Carter/git/nhc_50yl/NHC_2019_metabolism/data/metabolism/compiled/met_preds_stream_metabolizer.rds")$preds %>%
   filter(era == 'now', site !='PWC', year == 2019) %>%
   select(year, date, site, GPP, ER, discharge, DO_mgl = DO.obs, DO.sat) %>%
   mutate(DO_mgl = DO_mgl/DO.sat)
@@ -144,7 +145,7 @@ summary(lm(GPP~DO_mgl, data = filled))
 summary(lm(no3n_mgl~DO_mgl, data = filled))
 summary(lm(doc_mgl~DO_mgl, data = filled))
 
-met <- readRDS("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl2/NHC_2019_metabolism/data/metabolism/compiled/met_preds_stream_metabolizer.rds")$preds %>%
+met <- readRDS("C:/Users/Alice Carter/git/nhc_50yl/NHC_2019_metabolism/data/metabolism/compiled/met_preds_stream_metabolizer.rds")$preds %>%
   filter(era == 'now', site !='PWC', year != 2020) %>%
   select(year, date, site, GPP, ER, discharge, DO_mgl = DO.obs, DO.sat) %>%
   mutate(DO_mgl = DO_mgl/DO.sat)
@@ -172,3 +173,4 @@ summary(DOfits)
   
 dd <- met %>% filter(site %in% c('NHC', 'UNHC')) 
 s = 'both'  
+

@@ -15,7 +15,7 @@ library(RHydro)
 # load new NHC data - update if it's been a while since 10/14/20
 # nhc_mega <- StreamPULSE::request_data("NC_NHC", variables=c("WaterTemp_C", "DO_mgL"))
 # write_rds(nhc_mega, "data/NHC_watertemp.rds")
-nhc <- readRDS("NHC_2019_metabolism/data/metabolism/compiled/met_preds_direct_calc.rds")$filled %>%
+nhc <- readRDS("C:/Users/Alice Carter/git/nhc_50yl/NHC_2019_metabolism/data/metabolism/compiled/met_preds_direct_calc.rds")$filled %>%
   filter(site == "NHC") 
   
 
@@ -31,7 +31,7 @@ nhc_qt <- nhc %>%
   select(date, doy, year, starts_with(c("temp.water", "discharge"))) %>%
   mutate(discharge_min = ifelse(discharge_min < 0.00675, 0.00675, discharge_min))
 
-hall <- read_csv("hall_50yl/code/data/hall/hall_discharge_temp_daily.csv") %>%
+hall <- read_csv("C:/Users/Alice Carter/git/nhc_50yl/hall_50yl/code/data/hall/hall_discharge_temp_daily.csv") %>%
   mutate(doy = as.numeric(format(date, '%j')),
          year = case_when(date < as.Date("1969-04-08") ~ 1968, 
                           date < as.Date("1970-04-08") ~ 1969,
@@ -296,7 +296,7 @@ write_csv(Q_stats, "../NHC_2019_metabolism/data/rating_curves/Q_stats_nowthen_ha
 
 # load Hall rating curve, calculate equation
 # 
-# hall_rc <- read_csv("data/hall/hall_figure5_digitized_ratingcurve.csv")
+# hall_rc <- read_csv("C:/Users/Alice Carter/git/nhc_50yl/hall_50yl/code/data/hall/hall_figure5_digitized_ratingcurve.csv")
 # # Calculate discharge from rating curves
 # # Q = a * L ^ b
 # 

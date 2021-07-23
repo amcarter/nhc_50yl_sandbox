@@ -4,10 +4,10 @@
 #    days with modeled metabolism in Hall 1970
 # 3. plot distributions of discharge, depth, and K600 for CBP in 1969 and today
 
+
 library(tidyverse)
 library(lubridate)
 library(zoo)
-
 # load Hall data for CBP site:
 
 hall <- read_csv("C:/Users/Alice Carter/git/nhc_50yl/hall_50yl/code/data/hall/hall_discharge_temp_daily.csv") %>%
@@ -68,11 +68,12 @@ for(i in 1:20){
 # a 13 day offset seems to do the best at lining up the storms where they should be:
 hall$date <- hall$date + 13
 
+
 hall_dat <- hall_met %>% 
   full_join(hall, by = 'date') %>%
   select(date, depth_m, discharge, level_m, temp.water) %>%
   arrange(date)
-
+write_csv(hall_dat, 'C:/Users/Alice Carter/git/nhc_50yl/hall_50yl/code/data/hall_discharge_temp_daily_corrected_dates.csv')
 # add K values ####
 hall_k <- read_csv("C:/Users/Alice Carter/git/nhc_50yl/hall_50yl/code/data/hall/hall_tableA2_k_morphology.csv")
 
